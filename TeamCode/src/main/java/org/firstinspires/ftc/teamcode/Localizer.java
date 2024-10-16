@@ -30,15 +30,13 @@ public class Localizer {
 
     private final DcMotorEx fl, fr, bl, br;
 
-    private double pe_fl, pe_fr, pe_bl, pe_br = 0;
-    private double e_fl, e_fr, e_bl, e_br = 0;
-    private double de_fl, de_fr, de_bl, de_br = 0;
-    private double vfl, vfr, vbl, vbr = 0;
-    private double afl, afr, abl, abr = 0;
+    private double pe_fl, pe_fr, pe_bl, pe_br;
+    private double e_fl, e_fr, e_bl, e_br;
+    private double de_fl, de_fr, de_bl, de_br;
 
     private final Telemetry telemetry;
 
-    public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+    public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.SECONDS);
 
     public Localizer(HardwareMap hardwareMap, Telemetry t) {
 
@@ -152,7 +150,7 @@ public class Localizer {
                 modifier = WHEEL_DIAMETER*PI/TICKS_PER_ROTATION;
                 break;
             case MOTOR_RPM:
-                modifier = 1/28.0;
+                modifier = 60/28.0;
                 break;
             default:
                 telemetry.addLine("INVALID OR NO DATATYPE FOR MOTOR VELOCITIES");
@@ -174,7 +172,7 @@ public class Localizer {
                 modifier = WHEEL_DIAMETER*PI/TICKS_PER_ROTATION;
                 break;
             case MOTOR_RPM:
-                modifier = 1/28.0;
+                modifier = 60/28.0;
                 break;
             default:
                 telemetry.addLine("INVALID OR NO DATATYPE FOR MOTOR VELOCITIES");

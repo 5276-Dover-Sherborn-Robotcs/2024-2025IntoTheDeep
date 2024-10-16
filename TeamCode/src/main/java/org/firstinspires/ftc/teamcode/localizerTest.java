@@ -13,18 +13,26 @@ import java.util.Arrays;
 @TeleOp(name="Localizer Test")
 public class localizerTest extends LinearOpMode {
 
-    Localizer localizer = new Localizer(hardwareMap, telemetry);
+    Localizer localizer;
 
     IMU imu;
 
-    DcMotorEx[] motors = localizer.getMotors();
+    DcMotorEx[] motors;
 
     DcMotorEx fl, fr, bl, br;
 
-    final double MAX_ACCEL = 100;
+    final double l = 15, b = 8;
+
+    double target_x, target_y, target_heading;
+
+    final double MAX_VELOC = 6000.0 / 60 * 96 * Math.PI;
+
+    final double MAX_ACCEL = 4000 * 60;
 
     @Override
     public void runOpMode() throws InterruptedException {
+
+        localizer = new Localizer(hardwareMap, telemetry);
 
         motors = localizer.getMotors();
 
@@ -55,55 +63,42 @@ public class localizerTest extends LinearOpMode {
 
         while (opModeIsActive()) {
             localizer.update();
-            //PID can be done with rotations at the motor rather than velocity, however there will be an insane amount of noise
-
-            double pfl, pfr, pbl, pbr;
-
-            double drivex = gamepad1.left_stick_x;
-            double drivey = -gamepad1.left_stick_y;
-
-            double turn = gamepad1.right_stick_x;
-
-            double power = Math.hypot(drivex, drivey);
-            double theta = Math.atan2(drivey, drivex);
-
-            double sin = Math.sin(theta - Math.PI/4);
-            double cos = Math.cos(theta - Math.PI/4);
-            double max = Math.max(Math.abs(sin), Math.abs(cos));
-
-            telemetry.addLine(String.format("drivex: %.3f || drivey: %.3f || turn: %.3f", drivex, drivey, turn));
-            telemetry.addLine(String.format("power: %.3f || theta: %.3f || max: %.3f", power, theta, max));
             localizer.telemetrize();
 
-            pfl = power * cos/max + turn;
-            pfr = power * sin/max - turn;
-            pbl = power * sin/max + turn;
-            pbr = power * cos/max - turn;
+            double error_x = target_x - localizer.getX();
+            double sign_x = Math.signum(error_x);
+            double error_y = target_y - localizer.getY();
+            double sign_y = Math.signum(error_y);
+            double error_heading = target_heading - localizer.getHeading();
+            double sign_heading = Math.signum(error_heading);
 
-            if ((power + Math.abs(turn)) > 1) {
-                pfl /= power + Math.abs(turn);
-                pfr /= power + Math.abs(turn);
-                pbl /= power + Math.abs(turn);
-                pbr /= power + Math.abs(turn);
+            double[] current_motor_velocity = localizer.getMotorVelocities(Localizer.dataType.RADIANS);
+            double[] current_robot_velocity = {0, 0, 0};
 
-            }
+            // Math to convert wheel velocities to robot velocities and vice versa can be found at https://github.com/acmerobotics/road-runner/blob/master/doc/pdf/Mobile_Robot_Kinematics_for_FTC.pdf
+            // Matrix math converted to equations to make evaluating and reading simpler
 
-            double[] target_powers = new double[]{pfl, pfr, pbl, pbr};
-            double[] target_rpms = Arrays.stream(target_powers).map(x -> x*6000).toArray();
-            double[] rpms = localizer.getMotorVelocities(Localizer.dataType.MOTOR_RPM);
+            current_robot_velocity[0] = (96.0 / 8) * Arrays.stream(current_motor_velocity).sum();
+            current_motor_velocity[0] *= -1; current_motor_velocity[2] *= -1;
+            current_robot_velocity[1] = (96.0 / 8) * Arrays.stream(current_motor_velocity).sum();
+            current_motor_velocity[1] *= -1; current_motor_velocity[2] *= -1;
+            current_robot_velocity[2] = (1 / (l + b)) * Arrays.stream(current_motor_velocity).sum();
+
+            double[] target_robot_velocity = {0, 0, 0};
+
+            // TODO: implement motion profiling or some sort of control loop here
+
+            double[] target_motor_velocity = {0, 0, 0, 0};
+            target_motor_velocity[0] = (target_robot_velocity[0] - target_robot_velocity[1] - (l + b) * target_robot_velocity[2]) / 48;
+            target_motor_velocity[1] = (target_robot_velocity[0] + target_robot_velocity[1] - (l + b) * target_robot_velocity[2]) / 48;
+            target_motor_velocity[2] = (target_robot_velocity[0] - target_robot_velocity[1] + (l + b) * target_robot_velocity[2]) / 48;
+            target_motor_velocity[3] = (target_robot_velocity[0] + target_robot_velocity[1] + (l + b) * target_robot_velocity[2]) / 48;
 
             for (int i = 0; i < 4; i++) {
 
-                double output_power = rpms[i]/6000;
+                double target_power = target_motor_velocity[i] * 20 / 6000;
 
-                double error = (target_rpms[i] - rpms[i]);
-                if (error < (MAX_ACCEL * localizer.d_time)) {
-                    output_power = target_powers[i];
-                } else {
-                    output_power += (MAX_ACCEL * localizer.d_time) / 6000;
-                }
-
-                motors[i].setPower(output_power);
+                motors[i].setPower(target_power);
 
             }
 
