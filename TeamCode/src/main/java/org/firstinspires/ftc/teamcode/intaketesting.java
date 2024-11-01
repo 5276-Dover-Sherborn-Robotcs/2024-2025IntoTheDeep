@@ -2,23 +2,21 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 
 @TeleOp(name = "intaketesting")
 public class intaketesting extends LinearOpMode {
 
-    DcMotorEx motor;
+    Servo l, r;
 
     @Override
     public void runOpMode() {
 
-        motor = hardwareMap.get(DcMotorEx.class, "m1");
+        l = hardwareMap.get(Servo.class, "l");
+        r = hardwareMap.get(Servo.class, "r");
 
-        motor.setDirection(DcMotorSimple.Direction.FORWARD);
-        motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        r.setDirection(Servo.Direction.FORWARD);
+        l.setDirection(Servo.Direction.REVERSE);
 
         telemetry.addLine("Ready");
         telemetry.update();
@@ -26,7 +24,12 @@ public class intaketesting extends LinearOpMode {
 
         while (opModeIsActive()) {
 
-            motor.setPower(gamepad1.left_stick_y);
+            double power = -gamepad1.left_stick_y / 2.0 + 0.5;
+
+            l.setPosition(power);
+            r.setPosition(power);
+
+            telemetry.update();
 
         }
 
