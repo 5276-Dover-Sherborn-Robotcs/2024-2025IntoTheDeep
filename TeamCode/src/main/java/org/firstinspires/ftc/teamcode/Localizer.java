@@ -42,7 +42,7 @@ public class Localizer {
 
     private final DcMotorEx fl, fr, bl, br;
 
-    private DcMotorEx[] motors;
+    private final DcMotorEx[] motors;
 
     private double[] prev_encoders = {0, 0, 0, 0};
     private double[] curr_encoders = {0, 0, 0, 0};
@@ -75,12 +75,13 @@ public class Localizer {
         br.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
         fl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        fl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         fr.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        fr.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         bl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        bl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         br.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        fl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        fr.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        bl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         br.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         imu = hardwareMap.get(IMU.class, "imu");
@@ -128,10 +129,14 @@ public class Localizer {
             delta_encoders[i] = prev_encoders[i] - curr_encoders[i];
         }
 
-        double thefactor = rt2 / 4.0 / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        linearOdometry();
 
-        double dfwd = (delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3]) * thefactor;
-        double dstr = (delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0]) * thefactor;
+    }
+
+    public void linearOdometry() {
+
+        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / rt2  / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / rt2 / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
 
         double dx = dfwd * Math.cos(d_heading) - dstr * Math.sin(d_heading);
         double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
@@ -139,17 +144,21 @@ public class Localizer {
         // NEGATIVE BECAUSE IT WAS BACKWARDS??????
         gx -= dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
         gy -= dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+    }
 
-        if (DEBUGGING) {
-            telemetry.addData("d_heading", d_heading);
-            telemetry.addData("thefactor", thefactor);
-            telemetry.addData("dfwd", dfwd);
-            telemetry.addData("dstr", dstr);
-            telemetry.addData("dx", dx);
-            telemetry.addData("dy", dy);
-            telemetry.addData("dheading", d_heading);
-        }
+    public void arcOdometry() {
 
+        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / rt2  / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / rt2 / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+
+        double r0 = dfwd/d_heading;
+        double r1 = dstr/d_heading;
+
+        double dx = r0 * Math.sin(d_heading) - r1 * (1 - Math.cos(d_heading));
+        double dy = r1 * Math.sin(d_heading) + r0 * (1 - Math.cos(d_heading));
+
+        gx -= dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy -= dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void reset() {

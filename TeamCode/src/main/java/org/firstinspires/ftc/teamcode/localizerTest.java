@@ -7,14 +7,15 @@ import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.teamcode.trajectories.LinearMotionProfile;
-import org.firstinspires.ftc.teamcode.trajectories.MotionProfile;
 
 @TeleOp(name="Localizer Test")
 public class localizerTest extends LinearOpMode {
@@ -22,7 +23,8 @@ public class localizerTest extends LinearOpMode {
     enum STATE {
         IDLE,
         RUNNING,
-        DONE
+        DONE,
+        RESET
     }
 
     private STATE state = STATE.IDLE;
@@ -37,7 +39,7 @@ public class localizerTest extends LinearOpMode {
 
     final double l = 15, b = 8;
 
-    MotionProfile motionProfile;
+    LinearMotionProfile motionProfile;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -45,6 +47,11 @@ public class localizerTest extends LinearOpMode {
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
         localizer = new Localizer(hardwareMap, telemetry);
+
+        motionProfile = new LinearMotionProfile(
+                new Pose2D(DistanceUnit.CM, 0, 0, AngleUnit.RADIANS, 0),
+                new Pose2D(DistanceUnit.CM, 100, 50, AngleUnit.RADIANS, 0),
+                telemetry);
 
         IMU imu = localizer.imu;
 
@@ -67,6 +74,7 @@ public class localizerTest extends LinearOpMode {
 
         while (opModeIsActive()) {
             localizer.telemetrize();
+            motionProfile.telemetrize();
             localizer.update();
 
             switch (state) {
@@ -109,23 +117,35 @@ public class localizerTest extends LinearOpMode {
                     if (gamepad1.a) {
                         // todo: start a forward motion profiling
 
-                        motionProfile = new LinearMotionProfile(new Pose2D(DistanceUnit.CM, 0, 0, AngleUnit.RADIANS, 0), new Pose2D(DistanceUnit.CM, 30, 0, AngleUnit.RADIANS, 0));
+                        motionProfile = new LinearMotionProfile(
+                                new Pose2D(DistanceUnit.CM, 0, 0, AngleUnit.RADIANS, 0),
+                                new Pose2D(DistanceUnit.CM, 60, 20, AngleUnit.RADIANS, 0),
+                                telemetry);
                         motionProfile.start();
 
                         state = STATE.RUNNING;
+                    } else if (gamepad1.y) {
+
                     }
 
                     break;
                 case RUNNING:
-
                     Pose2D vel = motionProfile.traj_vel_time();
                     Pose2D accel = motionProfile.traj_acc_time();
 
                     double x = Kv * vel.getX(DistanceUnit.CM) + Ka * accel.getX(DistanceUnit.CM);
                     double y = Kv * vel.getY(DistanceUnit.CM) + Ka * accel.getY(DistanceUnit.CM);
-                    double[] outputs = {x, y, y, x};
 
-                    for (int i = 0; i < 4; i++) motors[i].setPower(outputs[i]);
+                    telemetry.addData("x and y", "%f, %f", x, y);
+
+                    outputs[0] = x - y;
+                    outputs[1] = x + y;
+                    outputs[2] = x + y;
+                    outputs[3] = x - y;
+
+                    for (int i = 0; i < 4; i++) {
+                        motors[i].setPower(outputs[i]);
+                    }
 
                     if (motionProfile.is_traj_done()) {
                         state = STATE.DONE;
@@ -134,6 +154,16 @@ public class localizerTest extends LinearOpMode {
                 case DONE:
                     for (int i = 0; i < 4; i++) motors[i].setPower(0);
                     motionProfile.end();
+                    state = STATE.IDLE;
+                    break;
+                case RESET:
+                    for (int i = 0; i < 4; i++) motors[i].setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+                    ElapsedTime timer = new ElapsedTime();
+                    while (timer.time() < 3) {
+                        telemetry.update();
+                        telemetry.addLine("RESETTING ENCODERS");
+                    }
+                    for (int i = 0; i < 4; i++) motors[i].setMode(DcMotor.RunMode.RUN_USING_ENCODER);
                     state = STATE.IDLE;
                     break;
             }

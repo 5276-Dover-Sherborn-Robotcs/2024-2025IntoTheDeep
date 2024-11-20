@@ -4,6 +4,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 
 public abstract class MotionProfile {
 
+    public enum TrajectoryCase {
+        NORMAL,
+        DEGENERATE
+    }
+
+    public TrajectoryCase state = TrajectoryCase.NORMAL;
     public abstract void start();
     public abstract void end();
     public abstract Pose2D traj_pos_time();
