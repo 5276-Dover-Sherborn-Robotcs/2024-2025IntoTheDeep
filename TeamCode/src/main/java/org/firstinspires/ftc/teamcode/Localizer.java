@@ -1,7 +1,12 @@
 package org.firstinspires.ftc.teamcode;
 
-import static org.firstinspires.ftc.teamcode.DriveConstants.*;
+import static org.firstinspires.ftc.teamcode.DriveConstants.Ka;
+import static org.firstinspires.ftc.teamcode.DriveConstants.Kv;
+import static org.firstinspires.ftc.teamcode.DriveConstants.WHEEL_CIRCUMFERENCE;
+import static org.firstinspires.ftc.teamcode.DriveConstants.WHEEL_DIAMETER;
 
+import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -24,7 +29,9 @@ public class Localizer {
         MOTOR_RPM
     }
 
-    public boolean DEBUGGING = true;
+    public boolean DEBUGGING = false;
+
+    FtcDashboard dashboard = FtcDashboard.getInstance();
 
     private double x0 = 0;
     private Pose2D starePose;
@@ -36,7 +43,7 @@ public class Localizer {
     private final double PI = Math.PI;
     private final double rt2 = Math.sqrt(2);
 
-    public double current_time, previous_time, d_time = 0;
+    public double current_time, previous_time, old_time, d_time = 0;
 
     private double gx, gy, heading = 0;
 
@@ -44,9 +51,12 @@ public class Localizer {
 
     private final DcMotorEx[] motors;
 
+    private double[] old_encoders = {0, 0, 0, 0};
     private double[] prev_encoders = {0, 0, 0, 0};
     private double[] curr_encoders = {0, 0, 0, 0};
     private double[] delta_encoders = {0, 0, 0, 0};
+
+    private Double[] wheel_velocities = {0.0, 0.0, 0.0, 0.0};
 
     private final Telemetry telemetry;
 
@@ -119,14 +129,17 @@ public class Localizer {
         d_heading  = heading - prev_heading;
         prev_heading = heading;
 
-        current_time = timer.time()/1000;
+        current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
+        old_time = previous_time;
         previous_time = current_time;
 
         for (int i = 0; i < 4; i++) {
+            old_encoders[i] = prev_encoders[i];
             prev_encoders[i] = curr_encoders[i];
             curr_encoders[i] = motors[i].getCurrentPosition();
-            delta_encoders[i] = prev_encoders[i] - curr_encoders[i];
+            delta_encoders[i] = curr_encoders[i] - prev_encoders[i];
+            wheel_velocities[i] = (curr_encoders[i] - old_encoders[i]) / (current_time - old_time);
         }
 
         linearOdometry();
@@ -135,21 +148,38 @@ public class Localizer {
 
     public void linearOdometry() {
 
-        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / rt2  / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
-        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / rt2 / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
 
         double dx = dfwd * Math.cos(d_heading) - dstr * Math.sin(d_heading);
         double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
 
         // NEGATIVE BECAUSE IT WAS BACKWARDS??????
-        gx -= dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy -= dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        // IT WAS BACKWARDS BECAUSE I FUCKED UP THE DELTAS
+        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+    }
+
+    public void linearOdometry2() {
+
+        double pair_fl = (delta_encoders[0] + delta_encoders[3]) / 2.0 / TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
+        double pair_fr = (delta_encoders[1] + delta_encoders[2]) / 2.0 / TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
+
+        double dfwd = pair_fl * Math.cos(PI/4) + pair_fr * Math.cos(-PI/4);
+        double dstr = pair_fl * Math.sin(PI/4) + pair_fr * Math.sin(-PI/4);
+
+        double dx = dfwd * Math.cos(d_heading) - dstr * Math.sin(d_heading);
+        double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
+
+        // NEGATIVE BECAUSE IT WAS BACKWARDS??????
+        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void arcOdometry() {
 
-        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / rt2  / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
-        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / rt2 / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dfwd = ((delta_encoders[0] + delta_encoders[1] + delta_encoders[2] + delta_encoders[3])  / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
+        double dstr = ((delta_encoders[1] + delta_encoders[2] - delta_encoders[3] - delta_encoders[0])  / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
 
         double r0 = dfwd/d_heading;
         double r1 = dstr/d_heading;
@@ -157,8 +187,8 @@ public class Localizer {
         double dx = r0 * Math.sin(d_heading) - r1 * (1 - Math.cos(d_heading));
         double dy = r1 * Math.sin(d_heading) + r0 * (1 - Math.cos(d_heading));
 
-        gx -= dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy -= dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void reset() {
@@ -245,10 +275,13 @@ public class Localizer {
     }
 
     public void telemetrize() {
-        telemetry.addData("X POS", gx);
-        telemetry.addData("Y POS", gy);
-        telemetry.addData("HEADING", heading);
-        telemetry.addData("DELTA TIME", d_time);
+        TelemetryPacket packet = new TelemetryPacket(false);
+        packet.put("X POS", gx);
+        packet.put("Y POS", gy);
+        packet.put("HEADING", heading);
+        packet.put("DELTA TIME", d_time);
+        packet.addLine(String.format("WHEEL FL: %0.3f || WHEEL FR: %0.3f\nWHEEL BL: %0.3f || WHEEL BR: %0.3f", wheel_velocities[0], wheel_velocities[1], wheel_velocities[2], wheel_velocities[3]));
+        dashboard.sendTelemetryPacket(packet);
     }
 
     public double time() {

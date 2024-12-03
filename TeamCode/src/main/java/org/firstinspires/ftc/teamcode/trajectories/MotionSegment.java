@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode.trajectories;
 public class MotionSegment {
 
     double x0 = 0;
+    double initial_heading = 0;
     double v0 = 0;
     double a = 0;
     double dt = 0;

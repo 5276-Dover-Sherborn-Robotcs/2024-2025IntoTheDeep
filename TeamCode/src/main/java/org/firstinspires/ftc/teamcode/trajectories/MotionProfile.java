@@ -1,8 +1,10 @@
 package org.firstinspires.ftc.teamcode.trajectories;
 
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 public abstract class MotionProfile {
+
+    public abstract void telemetrize();
 
     public enum TrajectoryCase {
         NORMAL,

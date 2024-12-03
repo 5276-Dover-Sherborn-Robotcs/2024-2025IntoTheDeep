@@ -16,6 +16,12 @@ public class DriveConstants {
     public static double MAX_VELOCITY = MAX_VELOCITY_RPS * GEAR_RATIO * WHEEL_CIRCUMFERENCE; // / Math.sqrt(2);
     public static double MAX_ACCELERATION = MAX_VELOCITY / 4;
 
+    public static double trackwidth = 0.1;
+    public static double wheelbase = 0.1;
+
+    public static double MAX_ROTATIONAL_VELOCITY = MAX_VELOCITY / (0.5 * trackwidth + 0.5 * wheelbase);
+    public static double MAX_ROTATIONAL_ACCELERATION = MAX_ACCELERATION / (0.5 * trackwidth + 0.5 * wheelbase);
+
     public static double Kv = 1 / MAX_VELOCITY;
     public static double Ka = Kv / 5.0;
     public static double Kp = 0;

@@ -1,7 +1,8 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.tuning;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -59,6 +60,8 @@ public class MaxVelocityTuner extends LinearOpMode {
 
         while (opModeIsActive()) {
 
+            TelemetryPacket packet = new TelemetryPacket(false);
+
             double time = timer.time();
 
             if (time <= 1) {
@@ -77,7 +80,7 @@ public class MaxVelocityTuner extends LinearOpMode {
 
                 double vel = motors[i].getVelocity() / 28;
                 maxs[i] = Math.max(vel, maxs[i]);
-                telemetry.addData("MAX", "%s: %s", i, maxs[i]);
+                packet.addLine(String.format("MAX %s: %s", i, maxs[i]));
 
             }
 
@@ -89,7 +92,8 @@ public class MaxVelocityTuner extends LinearOpMode {
             }
 
             double average = Arrays.stream(maxs).sum() / 4;
-            telemetry.addData("Average Max Velocity", average);
+            packet.put("Average Max Velocity", average);
+            dashboard.sendTelemetryPacket(packet);
             telemetry.update();
 
         }
