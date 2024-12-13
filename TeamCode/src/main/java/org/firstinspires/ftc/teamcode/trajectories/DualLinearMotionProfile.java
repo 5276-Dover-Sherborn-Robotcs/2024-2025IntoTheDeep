@@ -64,16 +64,16 @@ public class DualLinearMotionProfile extends MotionProfile {
 
         int c = 0;
 
-        List<Double[]> positions = new ArrayList<Double[]>();
-        List<Double[]> velocities = new ArrayList<Double[]>();
-        List<Double[]> accelerations = new ArrayList<Double[]>();
+//        List<Double[]> positions = new ArrayList<Double[]>();
+//        List<Double[]> velocities = new ArrayList<Double[]>();
+//        List<Double[]> accelerations = new ArrayList<Double[]>();
 
         boolean arrived_x = abs(dx - x) <= 0.01;
         boolean arrived_r = abs(dh - h) <= pi/360;
         boolean completed_first = false;
 
         boolean constraint = false;
-        List<Integer> constrains = new ArrayList<Integer>();
+//        List<Integer> constrains = new ArrayList<Integer>();
 
         List<DualMotionSegment> periods = new ArrayList<DualMotionSegment>();
 
@@ -118,12 +118,12 @@ public class DualLinearMotionProfile extends MotionProfile {
                 a_t = 0;
                 a_r = 0;
                 constraint = true;
-                constrains.add(c);
+//                constrains.add(c);
             }
 
-            positions.add(new Double[]{x, h});
-            velocities.add(new Double[]{v_t, v_r});
-            accelerations.add(new Double[]{a_t, a_r});
+//            positions.add(new Double[]{x, h});
+//            velocities.add(new Double[]{v_t, v_r});
+//            accelerations.add(new Double[]{a_t, a_r});
 
             if (periods.isEmpty()) {
                 periods.add(new DualMotionSegment(x, h, v_t, v_r, a_t, a_r, theta, 0));
@@ -148,9 +148,15 @@ public class DualLinearMotionProfile extends MotionProfile {
                 v_r += a_r * dt * h_direction;
             }
 
+            telemetry.addLine("CREATING MOTION PROFILE");
+            telemetry.addData("TIME", t);
+            telemetry.update();
+
             t += dt;
 
             c++;
+
+            if (t >= 30) break;
 
         }
 
@@ -229,7 +235,7 @@ public class DualLinearMotionProfile extends MotionProfile {
             x0 += segment.get_pos(segment.dt)[0];
             r0 += segment.get_pos(segment.dt)[1];
         }
-        telemetry.addData("Target Position", x0);
+
         return new Pose2D(x0 * cos, x0 * sin, r0);
     }
 
@@ -244,7 +250,7 @@ public class DualLinearMotionProfile extends MotionProfile {
             time -= segment.dt;
             v = segment.get(segment.dt);
         }
-        telemetry.addData("Target Velocity", v);
+
         double a = theta - traj_pos_time().h;
         return new Pose2D(v[0] * Math.cos(a), v[0] * Math.sin(a), v[1]);
     }
@@ -259,7 +265,7 @@ public class DualLinearMotionProfile extends MotionProfile {
             }
             time -= segment.dt;
         }
-        telemetry.addData("Target Acceleration", a);
+
         double h = theta - traj_pos_time().h;
         return new Pose2D(a[0] * Math.cos(h), a[0] * Math.sin(h), a[1]);
     }

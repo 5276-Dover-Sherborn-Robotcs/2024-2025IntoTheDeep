@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.util;
 
 import static org.firstinspires.ftc.teamcode.DriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DriveConstants.Kv;
@@ -62,7 +62,8 @@ public class Localizer {
 
     public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
 
-    IMU imu;
+    public IMU imu;
+    public boolean imu_ready = false;
     double prev_heading, d_heading;
 
     public Localizer(HardwareMap hardwareMap, Telemetry t) {
@@ -104,7 +105,7 @@ public class Localizer {
         // Now initialize the IMU with this mounting orientation
         // Note: if you choose two conflicting directions, this initialization will cause a code exception.
 
-        imu.initialize(new IMU.Parameters(orientationOnRobot));
+        imu_ready = imu.initialize(new IMU.Parameters(orientationOnRobot));
 
         imu.resetYaw();
         heading = 0;
@@ -156,8 +157,8 @@ public class Localizer {
 
         // NEGATIVE BECAUSE IT WAS BACKWARDS??????
         // IT WAS BACKWARDS BECAUSE I FUCKED UP THE DELTAS
-        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx += dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy += dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void linearOdometry2() {
@@ -172,8 +173,8 @@ public class Localizer {
         double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
 
         // NEGATIVE BECAUSE IT WAS BACKWARDS??????
-        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx += dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy += dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void arcOdometry() {
@@ -187,8 +188,8 @@ public class Localizer {
         double dx = r0 * Math.sin(d_heading) - r1 * (1 - Math.cos(d_heading));
         double dy = r1 * Math.sin(d_heading) + r0 * (1 - Math.cos(d_heading));
 
-        gx = dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy = dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx += dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
+        gy += dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
     }
 
     public void reset() {
@@ -280,7 +281,7 @@ public class Localizer {
         packet.put("Y POS", gy);
         packet.put("HEADING", heading);
         packet.put("DELTA TIME", d_time);
-        packet.addLine(String.format("WHEEL FL: %0.3f || WHEEL FR: %0.3f\nWHEEL BL: %0.3f || WHEEL BR: %0.3f", wheel_velocities[0], wheel_velocities[1], wheel_velocities[2], wheel_velocities[3]));
+        packet.addLine(String.format("WHEEL FL: %.3f || WHEEL FR: %.3f\nWHEEL BL: %.3f || WHEEL BR: %.3f", wheel_velocities[0], wheel_velocities[1], wheel_velocities[2], wheel_velocities[3]));
         dashboard.sendTelemetryPacket(packet);
     }
 

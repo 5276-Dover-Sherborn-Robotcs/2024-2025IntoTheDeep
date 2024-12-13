@@ -11,7 +11,6 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 public class LinearMotionProfile extends MotionProfile {
 
     public Pose2D startPose, endPose;
-    public double p0 = 0;
     public double d = 0;
     public double theta = 0;
     public double sin = 0, cos = 0;
@@ -35,6 +34,7 @@ public class LinearMotionProfile extends MotionProfile {
         double dy = endPose.y - startPose.y;
         d = Math.hypot(dx, dy);
         theta = Math.atan2(dy, dx);
+//        theta = Math.atan2(dy, dx) + Math.PI/4;
         sin = Math.sin(theta);
         cos = Math.cos(theta);
 
@@ -73,7 +73,7 @@ public class LinearMotionProfile extends MotionProfile {
 
     public Pose2D traj_pos_time() {
         double time = timer.time();
-        double x0 = this.p0;
+        double x0 = 0;
         for (MotionSegment segment : trajectory) {
             if (time < segment.dt) {
                 x0 += segment.get_pos(time);
@@ -123,12 +123,8 @@ public class LinearMotionProfile extends MotionProfile {
     }
 
     public void end() {
-        sin = 0;
-        cos = 0;
-        p0 = 0;
         d = 0;
         t0 = 0;
-        trajectory = null;
         timer = null;
     }
 

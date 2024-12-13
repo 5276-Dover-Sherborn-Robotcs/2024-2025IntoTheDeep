@@ -14,6 +14,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.trajectories.LinearMotionProfile;
 import org.firstinspires.ftc.teamcode.trajectories.MotionProfile;
+import org.firstinspires.ftc.teamcode.util.Localizer;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 @TeleOp(name="Motion Profile Test")
@@ -49,7 +50,7 @@ public class motionProfileTest extends LinearOpMode {
 
         motionProfile = new LinearMotionProfile(
                 new Pose2D(0, 0, 0),
-                new Pose2D(12*2.54, 0, 0),
+                new Pose2D(24*2.54, 24*2.54, 0),
                 telemetry);
 
         IMU imu = localizer.imu;
@@ -64,6 +65,7 @@ public class motionProfileTest extends LinearOpMode {
         while (opModeInInit()) {
             telemetry.addLine("Localizer ready");
             localizer.telemetrize();
+            telemetry.addData("IMU ready", localizer.imu_ready);
             telemetry.update();
         }
 
@@ -141,6 +143,10 @@ public class motionProfileTest extends LinearOpMode {
                     outputs[1] = x + y;
                     outputs[2] = x + y;
                     outputs[3] = x - y;
+//                    outputs[0] = x;
+//                    outputs[1] = y;
+//                    outputs[2] = y;
+//                    outputs[3] = x;
 
                     for (int i = 0; i < 4; i++) {
                         motors[i].setPower(outputs[i]);
