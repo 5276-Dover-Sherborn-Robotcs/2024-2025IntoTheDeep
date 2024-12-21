@@ -1,10 +1,10 @@
 package org.firstinspires.ftc.teamcode.trajectories;
 
-import static org.firstinspires.ftc.teamcode.DriveConstants.MAX_ACCELERATION;
-import static org.firstinspires.ftc.teamcode.DriveConstants.MAX_ROTATIONAL_ACCELERATION;
-import static org.firstinspires.ftc.teamcode.DriveConstants.MAX_VELOCITY;
-import static org.firstinspires.ftc.teamcode.DriveConstants.trackwidth;
-import static org.firstinspires.ftc.teamcode.DriveConstants.wheelbase;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ACCELERATION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ROTATIONAL_ACCELERATION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_VELOCITY;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 

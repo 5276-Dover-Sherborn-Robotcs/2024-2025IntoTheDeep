@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.trajectories;
 
-import static org.firstinspires.ftc.teamcode.DriveConstants.MAX_ACCELERATION;
-import static org.firstinspires.ftc.teamcode.DriveConstants.MAX_VELOCITY;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ACCELERATION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_VELOCITY;
 
 import com.qualcomm.robotcore.util.ElapsedTime;
 

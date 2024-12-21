@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.acmerobotics.dashboard.config.Config;
 
 @Config
-public class DriveConstants {
+public class DanDriveConstants {
 
     public static double WHEEL_DIAMETER = 7.5;
     public static double WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * Math.PI;
@@ -25,5 +25,17 @@ public class DriveConstants {
     public static double Kv = 1 / MAX_VELOCITY;
     public static double Ka = Kv / 5.0;
     public static double Kp = 0;
+
+    public static double INIT_ANGLE = 0.6;
+
+    public static double TICKS_PER_ROTATION = 3895.9; // 3895.9 / 1.0 = x ticks / y rotations
+    public static double TICKS_PER_CM = 384.5 / 12.0; // 384.5 / 12.0 = x ticks / y cm
+    public static double MAX_EXTENSION = 69.6;
+
+    public static double Kg = 0.3; // x power at 0 degrees/ when sin(theta) is 1
+    public static double Kgl = 3.0;
+    public static double Kl = 0.5 / (MAX_EXTENSION * TICKS_PER_CM);
+
+    public static double Bx = 1;
 
 }

@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
-import static org.firstinspires.ftc.teamcode.DriveConstants.Ka;
-import static org.firstinspires.ftc.teamcode.DriveConstants.Kv;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -55,12 +56,24 @@ public class motionProfileTest extends LinearOpMode {
 
         IMU imu = localizer.imu;
 
-        motors = localizer.getMotors();
+        fl = hardwareMap.get(DcMotorEx.class, "m1");
+        fr = hardwareMap.get(DcMotorEx.class, "m2");
+        bl = hardwareMap.get(DcMotorEx.class, "m3");
+        br = hardwareMap.get(DcMotorEx.class, "m4");
 
-        fl = motors[0];
-        fr = motors[1];
-        bl = motors[2];
-        br = motors[3];
+        fl.setDirection(DcMotorSimple.Direction.FORWARD);
+        fr.setDirection(DcMotorSimple.Direction.REVERSE);
+        bl.setDirection(DcMotorSimple.Direction.FORWARD);
+        br.setDirection(DcMotorSimple.Direction.REVERSE);
+
+        fl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        fl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        fr.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        fr.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        bl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        bl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        br.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        br.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
         while (opModeInInit()) {
             telemetry.addLine("Localizer ready");
