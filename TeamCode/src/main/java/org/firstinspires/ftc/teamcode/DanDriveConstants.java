@@ -30,11 +30,12 @@ public class DanDriveConstants {
 
     public static double TICKS_PER_ROTATION = 3895.9; // 3895.9 / 1.0 = x ticks / y rotations
     public static double TICKS_PER_CM = 384.5 / 12.0; // 384.5 / 12.0 = x ticks / y cm
-    public static double MAX_EXTENSION = 69.6;
 
-    public static double Kg = 0.3; // x power at 0 degrees/ when sin(theta) is 1
-    public static double Kgl = 3.0;
-    public static double Kl = 0.5 / (MAX_EXTENSION * TICKS_PER_CM);
+    public static double BASE_MAX_EXTENSION = 97.0;
+
+    public static double Kg = 0.28; // x power at 0 degrees/ when sin(theta) is 1
+    public static double Kgl = 3.5;
+    public static double Kl = 0.25/BASE_MAX_EXTENSION;
 
     public static double Bx = 1;
 

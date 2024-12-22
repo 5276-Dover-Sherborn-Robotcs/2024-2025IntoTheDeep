@@ -1,36 +1,42 @@
 package org.firstinspires.ftc.teamcode;
 
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.*;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.BASE_MAX_EXTENSION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kgl;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kl;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_CM;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
-import org.firstinspires.ftc.teamcode.util.Localizer;
-
-import java.util.Arrays;
 
 @TeleOp(name = "DanChassisDrive")
 public class DanChassisDrive extends LinearOpMode {
 
     // Kp = .2 power at 45 degree (1/8th of a rotation) error
 
-    double Kp = 4.0/(TICKS_PER_ROTATION), Ki = 0.0, Kd = 0.0;
+    double Kp = 1.4/90, Ki = 0.0, Kd = 0.0;
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
     Servo left, right, in_rot;
 
-    Localizer localizer;
+//    Localizer localizer;
 
     FtcDashboard dashboard;
+
+    ElapsedTime timer;
 
     @Override
     public void runOpMode() {
@@ -81,141 +87,236 @@ public class DanChassisDrive extends LinearOpMode {
         right.setDirection(Servo.Direction.REVERSE);
         in_rot = hardwareMap.get(Servo.class, "in");
         in_rot.setDirection(Servo.Direction.FORWARD);
-        in_rot.setPosition(1.0);
+        in_rot.setPosition(0.9);
 
-        localizer = new Localizer(hardwareMap, telemetry);
+//        localizer = new Localizer(hardwareMap, telemetry);
 
         telemetry.addLine("Ready");
         telemetry.update();
         waitForStart();
 
-        double[] arm_positions = Arrays.stream(new double[]{0, 90, 100}).map(x -> (x / 360 * TICKS_PER_ROTATION)).toArray();
-        int current_arm_position = 0;
+        // Arm Rotation control
+        double[] arm_positions = {INIT_ANGLE, 65, 83};
+        int current_arm_position_index = 0;
+        double current_arm_rotation_power = 0;
 
+        // Arm extension control
+//        double current_arm_extension_power = 0;
 
+        // Intake rotation control
+        double current_in_position = 1.0;
+
+        // PID variables
         double prev_error = 0;
         double Ki_sum = 0.0;
+
+        // booleans to allow for pressing the button once does a thing once
         boolean arm_rot_input = false;
+        boolean intake_rotation_input = false;
+
+        timer = new ElapsedTime(ElapsedTime.Resolution.SECONDS);
+        timer.reset();
+        double prev_time = 0;
 
         while (opModeIsActive()) {
 
-            TelemetryPacket packet = new TelemetryPacket(false);
+            mecanumDrive();
 
-            double pfl, pfr, pbl, pbr;
+            double arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
 
-            double drivex = gamepad1.left_stick_x;
-            double drivey = -gamepad1.left_stick_y;
+            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
+            double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM);
+            double arm_extension_percentage = arm_extension / MAX_EXTENSION;
 
-            double turn = gamepad1.right_stick_x;
+            double min_extend_power = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
 
-            double power = Math.hypot(drivex, drivey);
-            double theta = Math.atan2(drivey, drivex);
+            telemetry.addData("DELTA TIME", timer.time() - prev_time);
 
-            double sin = Math.sin(theta - Math.PI/4);
-            double cos = Math.cos(theta - Math.PI/4);
-            double max = Math.max(Math.abs(sin), Math.abs(cos));
-
-            pfl = power * cos/max + turn;
-            pfr = power * sin/max - turn;
-            pbl = power * sin/max + turn;
-            pbr = power * cos/max - turn;
-
-            if ((power + Math.abs(turn)) > 1) {
-                pfl /= power + Math.abs(turn);
-                pfr /= power + Math.abs(turn);
-                pbl /= power + Math.abs(turn);
-                pbr /= power + Math.abs(turn);
-
-            }
-
-            // negative cause it was all backwards
-            fl.setPower(-pfl);
-            fr.setPower(-pfr);
-            bl.setPower(-pbl);
-            br.setPower(-pbr);
-
-            double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM) / MAX_EXTENSION;
-//            double arm_extension = 0;
-            double arm_angle = arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360 + INIT_ANGLE;
-            double min_extend_power = arm_extension * Kl;
-//            double min_extend_power = 0.0;
+            telemetry.addData("Target Arm Rotation Position", current_arm_position_index);
+            telemetry.addData("Arm Extension Position", arm_extension);
+            telemetry.addData("Arm Rotation Position", arm_angle);
 
 
-            packet.put("Target Arm Rotation Position", current_arm_position);
-            packet.put("Arm Extension Position", arm_extension);
-            packet.put("Arm Rotation Position", arm_angle);
-
-            double min_rot_power = 0.0;
-            double error = arm_positions[current_arm_position] - arm_rot.getCurrentPosition();
-            packet.put("Arm Rotation Error", error / TICKS_PER_ROTATION * 360);
+            // PIDG-EONNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+            double error = arm_positions[current_arm_position_index] - arm_angle;
+            telemetry.addData("Arm Rotation Error", error);
 //            double error = 0;
-            if (current_arm_position != 0 || Math.abs(error) >= 5) {
+            double p = error * Kp * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
+            telemetry.addData("P component", p);
+            Ki_sum += error;
+            double i = Ki_sum * Ki;
+            double d = (error - prev_error) * Kd;
+            double g = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
+            double min_rot_power = p + i + d + g;
+//            double min_rot_power = g;
+            min_rot_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
+            prev_error = error;
 
-                // PIDG CONTROLLER WOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-
-                double p = error * Kp;
-                packet.put("P component", p);
-                Ki_sum += error;
-                double i = Ki_sum * Ki;
-                double d = (error - prev_error) * Kd;
-                double g = Math.sin(Math.toRadians(arm_angle + 90 - INIT_ANGLE)) * Kg;
-                min_rot_power = g;
-                min_rot_power *= ((arm_extension * Kgl) + 1); // adjust for the length of the arm
-                prev_error = error;
-            } else {
+            if (Math.abs(error) >= 5) {
                 Ki_sum = 0;
+                if (current_arm_position_index == 0) {
+                    min_rot_power = 0;
+                }
             }
 
-            if (gamepad1.dpad_up) {
-                if (!arm_rot_input) current_arm_position = Math.min(current_arm_position + 1, 2);
-                arm_rot_input = true;
-//                telemetry.addLine("dpad up");
-                arm_rot.setPower(1);
-            } else if (gamepad1.dpad_down) {
-                if (!arm_rot_input) current_arm_position = Math.max(current_arm_position - 1, 0);
-                arm_rot_input = true;
-//                telemetry.addLine("dpad down");
-                arm_rot.setPower(-1);
+            if (gamepad2.dpad_up) {
+                if (!arm_rot_input) current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
+//
+                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, 1, 0.25 * (timer.time() - prev_time));
+
+            } else if (gamepad2.dpad_down) {
+                if (!arm_rot_input) current_arm_position_index = Math.max(current_arm_position_index - 1, 0);
+//
+                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, -.5, 0.25 * (timer.time() - prev_time));
             } else {
-                arm_rot_input = false;
-                arm_rot.setPower(min_rot_power);
+                current_arm_rotation_power = min_rot_power;
             }
+            arm_rot.setPower(current_arm_rotation_power);
+            arm_rot_input = gamepad2.dpad_up || gamepad2.dpad_down;
 
-            packet.put("Arm Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
-            packet.put("Passive Rotation Power", min_rot_power);
+            telemetry.addData("Arm Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
+            telemetry.addData("Passive Rotation Power", min_rot_power);
 
-            if (gamepad1.dpad_right && arm_extension <= 1) {
-//                telemetry.addLine("dpad right");
-                left_extend.setPower(1);
-                right_extend.setPower(1);
-            } else if (gamepad1.dpad_left) {
-//                telemetry.addLine("dpad left");
-                left_extend.setPower(-1);
-                right_extend.setPower(-1);
-            } else {
-                left_extend.setPower(min_extend_power);
-                right_extend.setPower(min_extend_power);
-            }
+//            if (gamepad1.dpad_right && arm_extension_percentage <= 1) {
+////                telemetry.addLine("dpad right");
+////                current_arm_extension_power = rateLimiter(current_arm_extension_power, 1, 0.5 * (timer.time() - prev_time));
+//                current_arm_extension_power = 1.0;
+//            } else if (gamepad1.dpad_left) {
+////                telemetry.addLine("dpad left");
+////                current_arm_extension_power = rateLimiter(current_arm_extension_power, -1, 0.5 * (timer.time() - prev_time));
+//                current_arm_extension_power = -1.0;
+//            } else {
+//                current_arm_extension_power = min_extend_power;
+//            }
+//            left_extend.setPower(current_arm_extension_power);
+//            right_extend.setPower(current_arm_extension_power);
 
-            packet.put("Arm Extension Current (average)", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
+            telemetry.addData("Arm Extension Current (average)", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
 
-            dashboard.sendTelemetryPacket(packet);
+            telemetry.update();
 
 //            telemetry.update();
 
-            double intake = (gamepad1.left_trigger - gamepad1.right_trigger) / 2 + 0.5;
+            double triggers_input = (gamepad2.right_trigger - gamepad2.left_trigger);
+            left_extend.setPower(triggers_input + min_extend_power);
+            right_extend.setPower(triggers_input + min_extend_power);
+
+
+            double intake = (gamepad2.right_stick_y + gamepad2.left_stick_y) / 2.0 + 0.5;
             left.setPosition(intake);
             right.setPosition(intake);
 
-            if (gamepad1.x) {
-                in_rot.setPosition(0.27);
-            } else if (gamepad1.b) {
+            if (gamepad2.square && !intake_rotation_input) {
+                current_in_position = Math.max(0.0, current_in_position - 0.1);
+                in_rot.setPosition(0);
+            } else if (gamepad2.circle && !intake_rotation_input) {
+                current_in_position = Math.min(1.0, current_in_position + 0.1);
                 in_rot.setPosition(1.0);
-            } else if (gamepad1.y) {
+            } else if (gamepad2.triangle) {
                 in_rot.setPosition(0.5);
             }
 
+            intake_rotation_input = gamepad1.x || gamepad1.b;
+
+            if (gamepad1.a) {
+                resetArmMotors();
+            }
+
+            prev_time = timer.time();
+
         }
+
+    }
+
+    public void resetArmMotors() {
+
+        timer.reset();
+
+        telemetry.addLine("Resetting Arm Rotation");
+        telemetry.update();
+        while (arm_rot.getCurrent(CurrentUnit.AMPS) <= 6) {
+            if (timer.time() < 2.0) {
+                arm_rot.setPower(Math.max(-0.5, -timer.time()));
+            } else {
+                break;
+            }
+        }
+
+        arm_rot.setPower(0);
+        arm_rot.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        telemetry.addLine("Arm Rotation Reset");
+
+        timer.reset();
+        telemetry.addLine("Resetting Arm Extension");
+        telemetry.update();
+        while ((left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0 <= 7) {
+            if (timer.time() < 1.0) {
+                left_extend.setPower(Math.max(-0.5, -timer.time()));
+                right_extend.setPower(Math.max(-0.5, -timer.time()));
+            } else {
+                break;
+            }
+        }
+
+        left_extend.setPower(0);
+        right_extend.setPower(0);
+
+        while (timer.time() < 1) {
+            telemetry.addLine("Arm Reset");
+            telemetry.update();
+        }
+
+        left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        arm_rot.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        right_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        timer.reset();
+    }
+
+    public double rateLimiter(double current_speed, double target_speed, double max_accel) {
+
+        double change = Range.clip(target_speed-current_speed, -max_accel, max_accel);
+        return current_speed + change;
+
+    }
+
+    public void mecanumDrive() {
+
+        double pfl, pfr, pbl, pbr;
+
+        double drivex = gamepad1.left_stick_x;
+        double drivey = -gamepad1.left_stick_y;
+
+        double turn = gamepad1.right_stick_x;
+
+        double power = Math.hypot(drivex, drivey);
+        double theta = Math.atan2(drivey, drivex);
+
+        double sin = Math.sin(theta - Math.PI/4);
+        double cos = Math.cos(theta - Math.PI/4);
+        double max = Math.max(Math.abs(sin), Math.abs(cos));
+
+        pfl = power * cos/max + turn;
+        pfr = power * sin/max - turn;
+        pbl = power * sin/max + turn;
+        pbr = power * cos/max - turn;
+
+        if ((power + Math.abs(turn)) > 1) {
+            pfl /= power + Math.abs(turn);
+            pfr /= power + Math.abs(turn);
+            pbl /= power + Math.abs(turn);
+            pbr /= power + Math.abs(turn);
+
+        }
+
+        // negative cause it was all backwards
+        fl.setPower(-pfl);
+        fr.setPower(-pfr);
+        bl.setPower(-pbl);
+        br.setPower(-pbr);
 
     }
 
