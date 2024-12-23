@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.util;
+package org.firstinspires.ftc.teamcode;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Bx;
 
@@ -14,6 +14,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.teamcode.util.Encoder;
 
 public class Localizer {
 
@@ -32,7 +33,10 @@ public class Localizer {
     private final double rt2 = Math.sqrt(2);
 
     private final double TICKS_PER_ROTATION = 2000;
-    private final double WHEEL_CIRCUMFERENCE = 4.8 * 2 * PI;
+    private final double WHEEL_CIRCUMFERENCE = 4.8 * PI;
+
+    public static double X_MULTIPLIER = 1;
+    public static double Y_MULTIPLIER = 1;
 
     public double current_time, previous_time, old_time, d_time = 0;
 
@@ -45,11 +49,9 @@ public class Localizer {
     private double[] curr_encoders = {0, 0};
     private double[] deltas = {0, 0};
 
-    private Double[] velocities = {0.0, 0.0, 0.0};
-
-    private final Telemetry telemetry;
-
     public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+
+    Telemetry telemetry;
 
     public IMU imu;
     public boolean imu_ready = false;
@@ -59,8 +61,11 @@ public class Localizer {
 
         telemetry = t;
 
-        F = new Encoder(hardwareMap.get(DcMotorEx.class, "m1"));
-        L = new Encoder(hardwareMap.get(DcMotorEx.class, "m2"));
+        F = new Encoder(hardwareMap.get(DcMotorEx.class, "fl"));
+        L = new Encoder(hardwareMap.get(DcMotorEx.class, "fr"));
+
+        F.setDirection(Encoder.Direction.REVERSE);
+        L.setDirection(Encoder.Direction.REVERSE);
 
         encoders = new Encoder[]{F, L};
 
@@ -111,7 +116,7 @@ public class Localizer {
         if (Math.abs(d_heading) < 1e-4) {
             linearOdometry();
         } else {
-            arcOdometry();
+            linearOdometry();
         }
 
     }
@@ -126,8 +131,8 @@ public class Localizer {
 
         // todo: never fuck up the deltas
 
-        gx += dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy += dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx += (dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading));
+        gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
     }
 
     public void arcOdometry() {
@@ -141,8 +146,8 @@ public class Localizer {
         double dx = r0 * Math.sin(d_heading) - r1 * (1 - Math.cos(d_heading));
         double dy = r1 * Math.sin(d_heading) + r0 * (1 - Math.cos(d_heading));
 
-        gx += dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading);
-        gy += dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading);
+        gx += (dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading));
+        gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
     }
 
     public void reset() {

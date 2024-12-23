@@ -2,10 +2,12 @@ package org.firstinspires.ftc.teamcode;
 
 import com.acmerobotics.dashboard.config.Config;
 
+import org.firstinspires.ftc.teamcode.util.Pose2D;
+
 @Config
 public class DanDriveConstants {
 
-    public static double WHEEL_DIAMETER = 7.5;
+    public static double WHEEL_DIAMETER = 9.6;
     public static double WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * Math.PI;
 
     public static double MAX_VELOCITY_RPS = 87.85714285714286;
@@ -16,8 +18,8 @@ public class DanDriveConstants {
     public static double MAX_VELOCITY = MAX_VELOCITY_RPS * GEAR_RATIO * WHEEL_CIRCUMFERENCE; // / Math.sqrt(2);
     public static double MAX_ACCELERATION = MAX_VELOCITY / 4;
 
-    public static double trackwidth = 0.1;
-    public static double wheelbase = 0.1;
+    public static double trackwidth = (12 + 3.0/8)*2.54;
+    public static double wheelbase = (11 + 7.0/8)*2.54;
 
     public static double MAX_ROTATIONAL_VELOCITY = MAX_VELOCITY / (0.5 * trackwidth + 0.5 * wheelbase);
     public static double MAX_ROTATIONAL_ACCELERATION = MAX_ACCELERATION / (0.5 * trackwidth + 0.5 * wheelbase);
@@ -35,8 +37,28 @@ public class DanDriveConstants {
 
     public static double Kg = 0.28; // x power at 0 degrees/ when sin(theta) is 1
     public static double Kgl = 3.5;
-    public static double Kl = 0.25/BASE_MAX_EXTENSION;
+    public static double Kl = 0.3/BASE_MAX_EXTENSION;
 
-    public static double Bx = 1;
+    public static double Bx = -0.5 * 2.54;
+
+
+    // X AXIS IS THROUGH THE LONG SIDE OF THE SUBMERSIBLE
+    // Y AXIS IS THROUGH THE SHORT SIDE, TOWARDS THE BLUE RUNGS
+    /*
+
+
+               POSITIVE Y
+         ___________
+        |    blue   |
+        |           |
+        |           | POSITIVE X
+        |           |
+        |_____red___|
+              |
+             \ /
+            NEGATIVE Y
+
+     */
+    public static Pose2D BLUE_SIDE_SAMPLE_START = new Pose2D(32*2.54, 60*2.54, Math.toRadians(270));
 
 }

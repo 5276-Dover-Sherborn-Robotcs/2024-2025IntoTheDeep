@@ -15,6 +15,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
@@ -26,13 +27,17 @@ public class DanChassisDrive extends LinearOpMode {
 
     // Kp = .2 power at 45 degree (1/8th of a rotation) error
 
-    double Kp = 1.4/90, Ki = 0.0, Kd = 0.0;
+    double Kp = 1.4/90, Ki = 0.0001, Kd = 0.0;
+
+    PIDFCoefficients arm_rot_pidg = new PIDFCoefficients(
+            .7/45, 0.0, 0.0, Kg
+    );
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
     Servo left, right, in_rot;
 
-//    Localizer localizer;
+    Localizer localizer;
 
     FtcDashboard dashboard;
 
@@ -45,10 +50,10 @@ public class DanChassisDrive extends LinearOpMode {
 
         telemetry = new MultipleTelemetry(telemetry, dashboard.getTelemetry());
 
-        fl = hardwareMap.get(DcMotorEx.class, "m1");
-        fr = hardwareMap.get(DcMotorEx.class, "m2");
-        bl = hardwareMap.get(DcMotorEx.class, "m3");
-        br = hardwareMap.get(DcMotorEx.class, "m4");
+        fl = hardwareMap.get(DcMotorEx.class, "fl");
+        fr = hardwareMap.get(DcMotorEx.class, "fr");
+        bl = hardwareMap.get(DcMotorEx.class, "bl");
+        br = hardwareMap.get(DcMotorEx.class, "br");
 
         fl.setDirection(DcMotorSimple.Direction.FORWARD);
         fr.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -89,19 +94,15 @@ public class DanChassisDrive extends LinearOpMode {
         in_rot.setDirection(Servo.Direction.FORWARD);
         in_rot.setPosition(0.9);
 
-//        localizer = new Localizer(hardwareMap, telemetry);
+        localizer = new Localizer(hardwareMap, telemetry);
 
         telemetry.addLine("Ready");
         telemetry.update();
         waitForStart();
 
         // Arm Rotation control
-        double[] arm_positions = {INIT_ANGLE, 65, 83};
+        double[] arm_positions = {INIT_ANGLE, 65, 87};
         int current_arm_position_index = 0;
-        double current_arm_rotation_power = 0;
-
-        // Arm extension control
-//        double current_arm_extension_power = 0;
 
         // Intake rotation control
         double current_in_position = 1.0;
@@ -112,7 +113,6 @@ public class DanChassisDrive extends LinearOpMode {
 
         // booleans to allow for pressing the button once does a thing once
         boolean arm_rot_input = false;
-        boolean intake_rotation_input = false;
 
         timer = new ElapsedTime(ElapsedTime.Resolution.SECONDS);
         timer.reset();
@@ -124,7 +124,9 @@ public class DanChassisDrive extends LinearOpMode {
 
             double arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
 
-            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
+//            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
+            double MAX_EXTENSION = current_arm_position_index == 0 ? 47 : BASE_MAX_EXTENSION;
+
             double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM);
             double arm_extension_percentage = arm_extension / MAX_EXTENSION;
 
@@ -136,20 +138,22 @@ public class DanChassisDrive extends LinearOpMode {
             telemetry.addData("Arm Extension Position", arm_extension);
             telemetry.addData("Arm Rotation Position", arm_angle);
 
-
             // PIDG-EONNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
             double error = arm_positions[current_arm_position_index] - arm_angle;
-            telemetry.addData("Arm Rotation Error", error);
-//            double error = 0;
+            Ki_sum += Math.abs(error) < 5 ? error : 0;
+
             double p = error * Kp * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
-            telemetry.addData("P component", p);
-            Ki_sum += error;
+
             double i = Ki_sum * Ki;
+
             double d = (error - prev_error) * Kd;
+
             double g = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
+
             double min_rot_power = p + i + d + g;
-//            double min_rot_power = g;
+
             min_rot_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
+
             prev_error = error;
 
             if (Math.abs(error) >= 5) {
@@ -160,66 +164,82 @@ public class DanChassisDrive extends LinearOpMode {
             }
 
             if (gamepad2.dpad_up) {
-                if (!arm_rot_input) current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
+                if (!arm_rot_input) {
+                    current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
+                    Ki_sum = 0;
+                }
 //
-                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, 1, 0.25 * (timer.time() - prev_time));
+//                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, 1, 0.25 * (timer.time() - prev_time));
 
             } else if (gamepad2.dpad_down) {
-                if (!arm_rot_input) current_arm_position_index = Math.max(current_arm_position_index - 1, 0);
+                if (!arm_rot_input) {
+                    current_arm_position_index = Math.max(current_arm_position_index - 1, 0);
+                    Ki_sum = 0;
+                }
 //
-                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, -.5, 0.25 * (timer.time() - prev_time));
-            } else {
-                current_arm_rotation_power = min_rot_power;
+//                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, -.5, 0.25 * (timer.time() - prev_time));
             }
-            arm_rot.setPower(current_arm_rotation_power);
+
+            arm_rot.setPower(min_rot_power);
             arm_rot_input = gamepad2.dpad_up || gamepad2.dpad_down;
 
             telemetry.addData("Arm Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
             telemetry.addData("Passive Rotation Power", min_rot_power);
 
-//            if (gamepad1.dpad_right && arm_extension_percentage <= 1) {
-////                telemetry.addLine("dpad right");
-////                current_arm_extension_power = rateLimiter(current_arm_extension_power, 1, 0.5 * (timer.time() - prev_time));
-//                current_arm_extension_power = 1.0;
-//            } else if (gamepad1.dpad_left) {
-////                telemetry.addLine("dpad left");
-////                current_arm_extension_power = rateLimiter(current_arm_extension_power, -1, 0.5 * (timer.time() - prev_time));
-//                current_arm_extension_power = -1.0;
-//            } else {
-//                current_arm_extension_power = min_extend_power;
-//            }
-//            left_extend.setPower(current_arm_extension_power);
-//            right_extend.setPower(current_arm_extension_power);
-
             telemetry.addData("Arm Extension Current (average)", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
+
+            localizer.update();
+
+            telemetry.addData("X", localizer.getX());
+            telemetry.addData("Y", localizer.getY());
+            telemetry.addData("Heading", localizer.getHeading());
 
             telemetry.update();
 
 //            telemetry.update();
 
             double triggers_input = (gamepad2.right_trigger - gamepad2.left_trigger);
-            left_extend.setPower(triggers_input + min_extend_power);
-            right_extend.setPower(triggers_input + min_extend_power);
 
+            if (arm_extension_percentage > 1) {
+                left_extend.setPower(Math.min(0, (triggers_input + min_extend_power)));
+                right_extend.setPower(Math.min(0, (triggers_input + min_extend_power)));
+            } else if (current_arm_position_index == 2) {
+                left_extend.setPower(triggers_input);
+                right_extend.setPower(triggers_input);
+            } else if (current_arm_position_index == 0) {
+                triggers_input = (gamepad2.right_trigger/2 - gamepad2.left_trigger);
+                left_extend.setPower(triggers_input + min_extend_power);
+                right_extend.setPower(triggers_input + min_extend_power);
+            } else {
+                left_extend.setPower(triggers_input + min_extend_power);
+                right_extend.setPower(triggers_input + min_extend_power);
+            }
 
             double intake = (gamepad2.right_stick_y + gamepad2.left_stick_y) / 2.0 + 0.5;
+
+            if (in_rot.getPosition() < 0.25) intake = 1.0;
+
             left.setPosition(intake);
             right.setPosition(intake);
 
-            if (gamepad2.square && !intake_rotation_input) {
-                current_in_position = Math.max(0.0, current_in_position - 0.1);
-                in_rot.setPosition(0);
-            } else if (gamepad2.circle && !intake_rotation_input) {
-                current_in_position = Math.min(1.0, current_in_position + 0.1);
-                in_rot.setPosition(1.0);
+            if (gamepad2.circle) {
+                current_in_position = 1.0;
             } else if (gamepad2.triangle) {
-                in_rot.setPosition(0.5);
+                current_in_position = 0.5;
             }
 
-            intake_rotation_input = gamepad1.x || gamepad1.b;
+            if (gamepad2.square) {
+                in_rot.setPosition(0.0);
+            } else {
+                in_rot.setPosition(current_in_position);
+            }
 
-            if (gamepad1.a) {
+            if (gamepad1.cross) {
                 resetArmMotors();
+            }
+
+            if (gamepad1.square) {
+                arm_rot.setPower(-1.0);
             }
 
             prev_time = timer.time();
@@ -281,6 +301,10 @@ public class DanChassisDrive extends LinearOpMode {
         double change = Range.clip(target_speed-current_speed, -max_accel, max_accel);
         return current_speed + change;
 
+    }
+
+    public double rotatePID() {
+        return 0;
     }
 
     public void mecanumDrive() {

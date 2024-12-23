@@ -15,7 +15,6 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.teamcode.trajectories.LinearMotionProfile;
 import org.firstinspires.ftc.teamcode.trajectories.MotionProfile;
-import org.firstinspires.ftc.teamcode.util.Localizer;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 @TeleOp(name="Motion Profile Test")

@@ -16,6 +16,8 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
+import org.firstinspires.ftc.teamcode.util.Encoder;
+
 @SuppressLint("DefaultLocale")
 // THIS ^^ IS BECAUSE OF THE GOD DAM STRING.FORMAT THINGY AAAAAAAAAAAAAAAAAAAAAAA
 @Config
@@ -31,6 +33,8 @@ public class armTester extends LinearOpMode {
     public static double ROTATION_POWER = 0.5;
 
     DcMotorEx arm_rot, left_extend, right_extend;
+
+    Encoder parallel, perpendicular;
 
     FtcDashboard dashboard = FtcDashboard.getInstance();
 
@@ -64,6 +68,10 @@ public class armTester extends LinearOpMode {
 
         arm_rot.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, pidf);
 
+        parallel = new Encoder(hardwareMap.get(DcMotorEx.class, "m1"));
+        perpendicular = new Encoder(hardwareMap.get(DcMotorEx.class, "m2"));
+
+
         telemetry.addLine("Ready");
         telemetry.update();
 
@@ -78,6 +86,9 @@ public class armTester extends LinearOpMode {
             packet.put("I", pidf.i);
             packet.put("D", pidf.d);
             packet.put("F", pidf.f);
+
+            packet.put("Parallel Position", parallel.getCurrentPosition());
+            packet.put("Perpendicular Position", perpendicular.getCurrentPosition());
 
             dashboard.sendTelemetryPacket(packet);
 
