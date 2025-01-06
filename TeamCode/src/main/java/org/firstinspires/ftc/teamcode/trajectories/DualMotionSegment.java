@@ -22,7 +22,7 @@ public class DualMotionSegment {
         this.v_r = v[1];
         this.a_t = a[0];
         this.a_r = a[1];
-        this.theta = 0;
+        this.theta = theta;
         this.dt = dt;
     }
 
@@ -37,7 +37,7 @@ public class DualMotionSegment {
         this.v_r = v_r;
         this.a_t = a_t;
         this.a_r = a_r;
-        this.theta = 0;
+        this.theta = theta;
         this.dt = dt;
     }
 

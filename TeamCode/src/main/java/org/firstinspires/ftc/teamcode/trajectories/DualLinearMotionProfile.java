@@ -33,6 +33,9 @@ public class DualLinearMotionProfile extends MotionProfile {
     boolean x_max_normal = false;
     boolean r_max_normal = false;
 
+    double x_direction = 0;
+    double h_direction = 0;
+
     boolean swapped = false;
 
     public DualMotionSegment[] trajectory = {};
@@ -42,12 +45,16 @@ public class DualLinearMotionProfile extends MotionProfile {
 
     Telemetry telemetry;
 
+    public static boolean isTrajNormal(double d, double vmax, double amax) {
+        return (vmax / amax) < (d / vmax);
+    }
+
     void add_period(ArrayList<double[]> periods, double x_mult, double r_mult, double dt) {
         if (dt != 0) {
             if (swapped) {
-                periods.add(new double[]{MAX_ACCELERATION * x_mult, MAX_ROTATIONAL_ACCELERATION * r_mult, dt});
+                periods.add(new double[]{MAX_ROTATIONAL_ACCELERATION * r_mult * h_direction, MAX_ACCELERATION * x_mult * x_direction, dt});
             } else {
-                periods.add(new double[]{MAX_ACCELERATION * r_mult, MAX_ROTATIONAL_ACCELERATION * x_mult, dt});
+                periods.add(new double[]{MAX_ACCELERATION * x_mult * x_direction, MAX_ROTATIONAL_ACCELERATION * r_mult * h_direction, dt});
             }
         }
 
@@ -77,7 +84,6 @@ public class DualLinearMotionProfile extends MotionProfile {
         endPose = end;
 
         double dh = endPose.h - startPose.h;
-        double h_direction = Math.signum(dh);
 
         double v_x_c_max = MAX_VELOCITY / 2;
         double v_r_c_max = MAX_ROTATIONAL_VELOCITY / 2;
@@ -86,6 +92,12 @@ public class DualLinearMotionProfile extends MotionProfile {
         double dx_y = endPose.y - startPose.y;
         double dx = Math.hypot(dx_x, dx_y);
         theta = Math.atan2(dx_y, dx_x);
+
+        if (dx < 1e-3) dx = 0;
+        if (dh < 1e-2) dh = 0;
+
+        h_direction = Math.signum(dh);
+        x_direction = Math.signum(dx);
 
 
         if (!(x_normal || r_normal)){
@@ -158,13 +170,16 @@ public class DualLinearMotionProfile extends MotionProfile {
 
                 fully_degenerate_traj(periods, dT, dt);
             }
-        } else {
+        }  else {
 
             double dT1 = v_x_c_max / MAX_ACCELERATION;
             double dT2 = dx / v_x_c_max;
 
             double dt1 = v_r_c_max / MAX_ROTATIONAL_ACCELERATION;
             double dt2 = dh / v_r_c_max;
+
+            System.out.println(dT1 + " " + dt1);
+            System.out.println(dT2 + " " + dt2);
 
             if (dT2 < dt2) {
                 swapped = true;
@@ -173,16 +188,97 @@ public class DualLinearMotionProfile extends MotionProfile {
                 dt2 = temp;
             }
 
+            System.out.println(dT1 + " " + dt1);
+            System.out.println(dT2 + " " + dt2);
+
             add_period(periods, 1, 1, dT1);
             add_period(periods, 0, 0, dt2);
 
-            add_period(periods, 0, -1, dt1 + dt2);
+            if (dT2 >= dt1 + dt2) {
+                add_period(periods, 0, -1, dt1 + dt2);
 
-            add_period(periods, 0, 0, dT2);
-            add_period(periods, -1, 0, dT1 + dT2);
+                // somehow make it reaccelerate
+                // I MADE IT REACCELERATEEEEEEEEEEEE
+
+                if (!swapped) {
+
+                    double dx2 = dx - v_x_c_max * dt2;
+
+                    if (isTrajNormal(dx2, MAX_VELOCITY, MAX_ACCELERATION)) {
+
+                        double dT12 = MAX_VELOCITY / MAX_ACCELERATION - dT1 + dt1 + dt2;
+                        double dT22 = dx2 / MAX_VELOCITY - dT1 + dt1 + dt2;
+
+                        add_period(periods, 1, 0, dT12);
+                        add_period(periods, 0, 0, dT22);
+                        add_period(periods, -1, 0, MAX_VELOCITY / MAX_ACCELERATION);
+
+                    } else {
+
+                        double dT = sqrt(dx2 / MAX_ACCELERATION);
+
+                        add_period(periods, 1, 0, dT - dT1 + dt1 + dt2);
+                        add_period(periods, -1, 0, dT + dT - dT1 + dt1 + dt2);
+                    }
+
+                } else {
+
+                    double h2 = dh - v_r_c_max * dt2;
+
+                    if (isTrajNormal(h2, MAX_ROTATIONAL_VELOCITY, MAX_ROTATIONAL_ACCELERATION)) {
+
+                        double dT12 = MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION - dT1;
+                        double dT22 = h2 / MAX_ROTATIONAL_VELOCITY;
+
+                        add_period(periods, 1, 0, dT12);
+                        add_period(periods, 0, 0, dT22);
+                        add_period(periods, -1, 0, MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION);
+
+                    } else {
+
+                        double dT = sqrt(h2 / MAX_ROTATIONAL_ACCELERATION);
+
+                        add_period(periods, 1, 0, dT - dT1 + dt1 + dt2);
+                        add_period(periods, -1, 0, dT + dT - dT1 + dt1 + dt2);
+                    }
+
+                }
+            } else {
+                add_period(periods, 0, -1, dT2);
+                add_period(periods, -1, -1, dt1 + dt2);
+
+                add_period(periods, -1, 0, dT1 + dT2);
+            }
         }
 
+        ArrayList<DualMotionSegment> collection = new ArrayList<>();
 
+        double t0 = 0;
+        double x0 = 0;
+        double h0 = 0;
+        double vx0 = 0;
+        double vh0 = 0;
+
+        for (double[] period : periods) {
+
+            double dt = period[2] - t0;
+
+            collection.add(
+                    new DualMotionSegment(
+                            x0, h0, vx0, vh0, period[0], period[1], theta, dt
+                    )
+            );
+
+            x0 += vx0 * dt + .5 * period[0] * dt * dt;
+            vx0 += period[0] * dt;
+
+            h0 += vh0 * dt + .5 * period[1] * dt * dt;
+            vh0 += period[1] * dt;
+
+            t0 = period[2];
+        }
+
+        trajectory = collection.toArray(new DualMotionSegment[periods.size()]);
 
     }
 

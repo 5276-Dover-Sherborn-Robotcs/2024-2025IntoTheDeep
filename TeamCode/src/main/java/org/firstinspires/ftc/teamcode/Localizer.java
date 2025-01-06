@@ -40,7 +40,7 @@ public class Localizer {
     public static double X_MULTIPLIER = 1;
     public static double Y_MULTIPLIER = 1;
 
-    public double current_time, previous_time, old_time, d_time = 0;
+    public double current_time, previous_time, d_time = 0;
 
     private double gx, gy, heading = 0;
 
@@ -105,7 +105,6 @@ public class Localizer {
 
         current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
-        old_time = previous_time;
 
         for (int i = 0; i < encoders.length; i++) {
             curr_encoders[i] = encoders[i].getCurrentPosition();
@@ -184,8 +183,6 @@ public class Localizer {
 
         gx = 0;
         gy = 0;
-        deltas[0] = 0;
-        deltas[1] = 0;
 
         timer.reset();
     }

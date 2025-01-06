@@ -16,7 +16,7 @@ public class DanDriveConstants {
     public static double GEAR_RATIO = 1.0;
 
     public static double MAX_VELOCITY = MAX_VELOCITY_RPS * GEAR_RATIO * WHEEL_CIRCUMFERENCE; // / Math.sqrt(2);
-    public static double MAX_ACCELERATION = MAX_VELOCITY / 4;
+    public static double MAX_ACCELERATION = MAX_VELOCITY / 2;
 
     public static double trackwidth = (12 + 3.0/8)*2.54;
     public static double wheelbase = (11 + 7.0/8)*2.54;
@@ -48,12 +48,12 @@ public class DanDriveConstants {
 
 
                POSITIVE Y
-         ___________
-        |    blue   |
-        |           |
-        |           | POSITIVE X
-        |           |
-        |_____red___|
+         ___________                        | blue bucket is up in this corner
+        |    blue   |                       |
+        |           |                       |
+        |           | POSITIVE X            |
+        |           |                       |
+        |_____red___|                       | red observation zone is down here
               |
              \ /
             NEGATIVE Y

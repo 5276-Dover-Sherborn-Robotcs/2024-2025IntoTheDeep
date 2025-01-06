@@ -19,7 +19,6 @@ public class LinearMotionProfile extends MotionProfile {
     public MotionSegment[] trajectory = {};
 
     public ElapsedTime timer;
-    public double t0;
 
     Telemetry telemetry;
 
@@ -123,8 +122,6 @@ public class LinearMotionProfile extends MotionProfile {
     }
 
     public void end() {
-        d = 0;
-        t0 = 0;
         timer = null;
     }
 

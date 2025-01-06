@@ -97,8 +97,8 @@ public class motionProfileTest extends LinearOpMode {
                         if (!wasy) {
                             timey = localizer.time();
                         }
-                        if (wasy && timey != 0.0 && (timey - localizer.time()) >= 2) {
-                            localizer.DEBUGGING = true;
+                        if (wasy && timey != 0.0 && (localizer.time() - timey >= 2)) {
+                            localizer.DEBUGGING = !localizer.DEBUGGING;
                             timey = 0.0;
                         }
                     }
@@ -119,7 +119,7 @@ public class motionProfileTest extends LinearOpMode {
                     double delta_time = localizer.d_time;
 
                     for (int i = 0; i < 4; i++) {
-                        double accel = delta_time * ((max_power != 0) ? Math.abs(target_powers[i] / max_power) : 1);
+                        double accel = 2 * delta_time * ((max_power != 0) ? Math.abs(target_powers[i] / max_power) : 1);
 
                         double difference = target_powers[i] - outputs[i];
 
