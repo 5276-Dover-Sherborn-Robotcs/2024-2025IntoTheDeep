@@ -2,11 +2,12 @@ package org.firstinspires.ftc.teamcode.trajectories;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ACCELERATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ROTATIONAL_ACCELERATION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ROTATIONAL_VELOCITY;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_VELOCITY;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 import static java.lang.Math.abs;
-import static java.lang.Math.max;
+import static java.lang.Math.sqrt;
 
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -14,7 +15,6 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
-import java.util.List;
 
 public class DualLinearMotionProfile extends MotionProfile {
 
@@ -22,11 +22,18 @@ public class DualLinearMotionProfile extends MotionProfile {
     double lx = wheelbase / 2;
     double ly = trackwidth / 2;
 
-    public Pose2D startPose, endPose;
+    public Pose2D startPose, endPose, poseEstimate;
     public double p0 = 0;
     public double theta = 0;
     public double sin = 0, cos = 0;
     public double duration = 0;
+
+    boolean x_normal = false;
+    boolean r_normal = false;
+    boolean x_max_normal = false;
+    boolean r_max_normal = false;
+
+    boolean swapped = false;
 
     public DualMotionSegment[] trajectory = {};
 
@@ -35,7 +42,34 @@ public class DualLinearMotionProfile extends MotionProfile {
 
     Telemetry telemetry;
 
+    void add_period(ArrayList<double[]> periods, double x_mult, double r_mult, double dt) {
+        if (dt != 0) {
+            if (swapped) {
+                periods.add(new double[]{MAX_ACCELERATION * x_mult, MAX_ROTATIONAL_ACCELERATION * r_mult, dt});
+            } else {
+                periods.add(new double[]{MAX_ACCELERATION * r_mult, MAX_ROTATIONAL_ACCELERATION * x_mult, dt});
+            }
+        }
+
+    }
+
+    void fully_degenerate_traj(ArrayList<double[]> periods, double dT, double dt) {
+
+        add_period(periods, 1, 1, dt);
+        if (dT > 2*dt) {
+            add_period(periods, 1, -1, 2 * dt);
+            add_period(periods, 1, 0, dT);
+        } else {
+            add_period(periods, 1, -1, dT);
+            add_period(periods, -1, -1, 2 * dt);
+        }
+        add_period(periods, -1, 0, 2 * dT);
+
+    }
+
     public DualLinearMotionProfile(Pose2D start, Pose2D end, Telemetry tel) {
+
+        ArrayList<double[]> periods = new ArrayList<>();
 
         telemetry = tel;
 
@@ -45,144 +79,111 @@ public class DualLinearMotionProfile extends MotionProfile {
         double dh = endPose.h - startPose.h;
         double h_direction = Math.signum(dh);
 
+        double v_x_c_max = MAX_VELOCITY / 2;
+        double v_r_c_max = MAX_ROTATIONAL_VELOCITY / 2;
+
         double dx_x = endPose.x - startPose.x;
         double dx_y = endPose.y - startPose.y;
         double dx = Math.hypot(dx_x, dx_y);
         theta = Math.atan2(dx_y, dx_x);
-        double x_direction = Math.signum(dx);
 
-        double x = 0;
-        double h = 0;
-        double t = 0;
-        double dt = 0.0005;
-        double v_t= 0;
-        double v_r = 0;
-        double a_t = MAX_ACCELERATION;
-        double a_r = MAX_ROTATIONAL_ACCELERATION;
-        double dx_a = 0;
-        double dh_a = 0;
 
-        int c = 0;
+        if (!(x_normal || r_normal)){
+            
+            double dT = sqrt(dx / MAX_ACCELERATION);
+            double dt = sqrt(dh / MAX_ROTATIONAL_ACCELERATION);
 
-//        List<Double[]> positions = new ArrayList<Double[]>();
-//        List<Double[]> velocities = new ArrayList<Double[]>();
-//        List<Double[]> accelerations = new ArrayList<Double[]>();
 
-        boolean arrived_x = abs(dx - x) <= 0.01;
-        boolean arrived_r = abs(dh - h) <= pi/360;
-        boolean completed_first = false;
+            if (abs(dT - dt) < 1e-5) {
+                add_period(periods, 1, 1, dT);
+                add_period(periods, -1, -1, dT);
+                return;
+            }
 
-        boolean constraint = false;
-//        List<Integer> constrains = new ArrayList<Integer>();
+            if (dT < dt) {
+                double temp = dT;
+                dT = dt;
+                dt = temp;
+                swapped = true;
+            }
 
-        List<DualMotionSegment> periods = new ArrayList<DualMotionSegment>();
+            fully_degenerate_traj(periods, dT, dt);
+            
+        } else if (x_normal && !r_normal) {
 
-        while (!arrived_x || !arrived_r) {
+            double dt = sqrt(dh / MAX_ROTATIONAL_ACCELERATION);
+            if (x_max_normal) {
+                double dT1 = MAX_VELOCITY / MAX_ACCELERATION;
+                double dT2 = (dx / MAX_VELOCITY);
 
-            double olda_t = a_t;
-            double olda_r = a_r;
+                add_period(periods, 1, 1, dt);
 
-            arrived_x = abs(dx - x) <= 0.01;
-            arrived_r = abs(dh - h) <= pi/360;
-
-            dx_a = max(dx_a, -(v_t*v_t) / (2 * -MAX_ACCELERATION));
-
-            dh_a = max(dh_a, -(v_r*v_r) / (2 * -MAX_ROTATIONAL_ACCELERATION));
-
-            if (abs(dx - x) <= dx_a) {
-                a_t = -MAX_ACCELERATION;
-                if (arrived_x) {
-                    a_t = 0;
-                    v_t = 0;
-                    if (a_r == 0 && !arrived_r && !completed_first) {
-                        a_r = MAX_ROTATIONAL_ACCELERATION;
-                        constraint = false;
-                        completed_first = true;
-                    }
+                if (dT1 > 2 * dt) {
+                    add_period(periods, 1, -1, 2 * dt);
+                    add_period(periods, 1, 0, dT1);
+                } else {
+                    add_period(periods, 1, -1, dT1);
+                    add_period(periods, 0, -1, 2 * dt);
                 }
-            }
-            if (abs(dh - h) <= dh_a) {
-                a_r = -MAX_ROTATIONAL_ACCELERATION;
-                if (arrived_r) {
-                    a_r = 0;
-                    v_r = 0;
-                    if (a_t == 0 && !arrived_x && !completed_first) {
-                        a_r = MAX_ACCELERATION;
-                        constraint = false;
-                        completed_first = true;
-                    }
-                }
-            }
-
-            if (constrained(v_t, v_r, h) && !constraint) {
-                a_t = 0;
-                a_r = 0;
-                constraint = true;
-//                constrains.add(c);
-            }
-
-//            positions.add(new Double[]{x, h});
-//            velocities.add(new Double[]{v_t, v_r});
-//            accelerations.add(new Double[]{a_t, a_r});
-
-            if (periods.isEmpty()) {
-                periods.add(new DualMotionSegment(x, h, v_t, v_r, a_t, a_r, theta, 0));
-            } else if (olda_r != a_r || olda_t != a_t) {
-                periods.get(periods.size()-1).dt = t - periods.get(periods.size()-1).dt;
-                periods.add(new DualMotionSegment(x, h, v_t, v_r, a_t, a_r, theta, t));
-            }
-
-            x += v_t * dt + .5 * a_t * dt * dt;
-            if ((MAX_ACCELERATION - v_t) <= dt * a_t) {
-                a_t = 0;
-                v_t = MAX_ACCELERATION * x_direction;
+                add_period(periods, 0, 0, dT2);
+                add_period(periods, -1, 0, dT1 + dT2);
             } else {
-                v_t += a_t * dt * x_direction;
+                double dT = sqrt(dx / MAX_ACCELERATION);
+
+                fully_degenerate_traj(periods, dT, dt);
             }
 
-            h += v_r * dt + .5 * a_r * dt * dt;
-            if ((MAX_ROTATIONAL_ACCELERATION - v_r) <= dt * a_r) {
-                a_r = 0;
-                v_r = MAX_ROTATIONAL_ACCELERATION * h_direction;
-            } else{
-                v_r += a_r * dt * h_direction;
+
+        } else if (!x_normal && r_normal) {
+            swapped = true;
+            double dt = sqrt(dx / MAX_ACCELERATION);
+            if (r_max_normal) {
+                double dT1 = MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION;
+                double dT2 = (dh / MAX_ROTATIONAL_VELOCITY);
+
+                add_period(periods, 1, 1, dt);
+
+                if (dT1 > 2 * dt) {
+                    add_period(periods, 1, -1, 2 * dt);
+                    add_period(periods, 1, 0, dT1);
+                }else {
+                    add_period(periods, 1, -1, dT1);
+                    add_period(periods, 0, -1, 2 * dt);
+                }
+                add_period(periods, 0, 0, dT2);
+                add_period(periods, -1, 0, dT1 + dT2);
+
+            } else {
+                double dT = sqrt(dh / MAX_ROTATIONAL_ACCELERATION);
+
+                fully_degenerate_traj(periods, dT, dt);
+            }
+        } else {
+
+            double dT1 = v_x_c_max / MAX_ACCELERATION;
+            double dT2 = dx / v_x_c_max;
+
+            double dt1 = v_r_c_max / MAX_ROTATIONAL_ACCELERATION;
+            double dt2 = dh / v_r_c_max;
+
+            if (dT2 < dt2) {
+                swapped = true;
+                double temp = dT2;
+                dT2 = dt2;
+                dt2 = temp;
             }
 
-            telemetry.addLine("CREATING MOTION PROFILE");
-            telemetry.addData("TIME", t);
-            telemetry.update();
+            add_period(periods, 1, 1, dT1);
+            add_period(periods, 0, 0, dt2);
 
-            t += dt;
+            add_period(periods, 0, -1, dt1 + dt2);
 
-            c++;
-
-            if (t >= 30) break;
-
+            add_period(periods, 0, 0, dT2);
+            add_period(periods, -1, 0, dT1 + dT2);
         }
 
-        periods.get(periods.size()-1).dt = t;
 
-        duration = t;
 
-        trajectory = periods.toArray(trajectory);
-
-    }
-
-    public boolean constrained(double v, double r, double h) {
-        double a = theta - h - pi/4 - (-h % (pi/2) - pi/4);
-        double x = Math.cos(a) * v;
-        double y = Math.sin(a) * v;
-        double w = (lx + ly) * r;
-        double[] vels = {
-                x - w,
-                y + w,
-                y - w,
-                x + w
-        };
-        for (double vel : vels) {
-            if (abs(vel) >= MAX_VELOCITY) return true;
-        }
-        return true;
     }
 
     public DualLinearMotionProfile(Pose2D end, Telemetry t) {

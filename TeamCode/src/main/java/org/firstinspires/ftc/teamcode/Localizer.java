@@ -35,6 +35,8 @@ public class Localizer {
     private final double TICKS_PER_ROTATION = 2000;
     private final double WHEEL_CIRCUMFERENCE = 4.8 * PI;
 
+    private final double TICKS_PER_CM = TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
+
     public static double X_MULTIPLIER = 1;
     public static double Y_MULTIPLIER = 1;
 
@@ -100,36 +102,39 @@ public class Localizer {
         heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
         heading += (heading < 0) ? 2*PI : 0;
         d_heading  = heading - prev_heading;
-        prev_heading = heading;
 
         current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
         old_time = previous_time;
-        previous_time = current_time;
 
         for (int i = 0; i < encoders.length; i++) {
-            prev_encoders[i] = curr_encoders[i];
             curr_encoders[i] = encoders[i].getCurrentPosition();
             deltas[i] = curr_encoders[i] - prev_encoders[i];
         }
 
-        if (Math.abs(d_heading) < 1e-4) {
+        if (Math.abs(d_heading) < 1e-3) {
             linearOdometry();
         } else {
             linearOdometry();
         }
 
+        previous_time = current_time;
+        prev_heading = heading;
+
+        System.arraycopy(curr_encoders, 0, prev_encoders, 0, encoders.length);
+
     }
 
     public void linearOdometry() {
 
-        double dfwd = (deltas[0] / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
-        double dstr = (deltas[1] / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE - Bx * d_heading;
+        double dfwd = deltas[0] / TICKS_PER_CM;
+        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
 
         double dx = dfwd * Math.cos(d_heading) - dstr * Math.sin(d_heading);
         double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
 
         // todo: never fuck up the deltas
+        // I FRICKIN SCREWED UP THE DELTAS AGAIN (i left in the / 4.0 from the previous averaging)
 
         gx += (dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading));
         gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
@@ -137,8 +142,8 @@ public class Localizer {
 
     public void arcOdometry() {
 
-        double dfwd = (deltas[0] / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE;
-        double dstr = (deltas[1] / 4.0) / TICKS_PER_ROTATION * WHEEL_CIRCUMFERENCE - Bx * d_heading;
+        double dfwd = deltas[0] / TICKS_PER_CM;
+        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
 
         double r0 = dfwd/d_heading;
         double r1 = dstr/d_heading;
@@ -150,7 +155,38 @@ public class Localizer {
         gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
     }
 
+    public void poseExponential() {
+
+        double dfwd = deltas[0] / TICKS_PER_CM;
+        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
+
+        double dx;
+        double dy;
+
+        if (d_heading > 1e-2) {
+
+            dx = (Math.sin(d_heading)/d_heading) * dfwd + ((Math.cos(d_heading) - 1)/d_heading) * dstr;
+            dy = (Math.sin(d_heading)/d_heading) * dstr + (1 - (Math.cos(d_heading))/d_heading) * dfwd;
+
+        } else {
+
+            dx = (1 - (d_heading * d_heading / 6)) * dfwd + (-d_heading/2) * dstr;
+            dy = (1 - (d_heading * d_heading / 6)) * dstr + (d_heading/2) * dfwd;
+
+        }
+
+        gx += (dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading));
+        gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
+
+    }
+
     public void reset() {
+
+        gx = 0;
+        gy = 0;
+        deltas[0] = 0;
+        deltas[1] = 0;
+
         timer.reset();
     }
 

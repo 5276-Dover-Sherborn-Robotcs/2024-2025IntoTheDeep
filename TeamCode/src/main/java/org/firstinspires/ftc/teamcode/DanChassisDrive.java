@@ -27,10 +27,14 @@ public class DanChassisDrive extends LinearOpMode {
 
     // Kp = .2 power at 45 degree (1/8th of a rotation) error
 
-    double Kp = 1.4/90, Ki = 0.0001, Kd = 0.0;
+    double Kp = 1.4/90, Ki = 0.0000001, Kd = 0.0;
 
     PIDFCoefficients arm_rot_pidg = new PIDFCoefficients(
             .7/45, 0.0, 0.0, Kg
+    );
+
+    PIDFCoefficients arm_ext_pidg = new PIDFCoefficients(
+            1/2.0, 0.0, 0.0, Kl
     );
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
@@ -42,6 +46,26 @@ public class DanChassisDrive extends LinearOpMode {
     FtcDashboard dashboard;
 
     ElapsedTime timer;
+
+    // Arm Rotation control
+    double[] arm_positions = {INIT_ANGLE, 65, 87};
+    int current_arm_position_index = 0;
+
+    // Arm Extension control
+    double[] arm_extensions = {47, ((38*2.54)/Math.sin(Math.toRadians(65)) - 38.4), BASE_MAX_EXTENSION};
+    int current_arm_extension_index = 0;
+
+    // Intake rotation control
+    double current_in_position = 1.0;
+
+    // PID variables
+    double prev_error = 0;
+    double Ki_sum = 0.0;
+
+    // booleans to allow for pressing the button once does a thing once
+    boolean arm_rot_input = false;
+
+    double prev_time;
 
     @Override
     public void runOpMode() {
@@ -100,23 +124,8 @@ public class DanChassisDrive extends LinearOpMode {
         telemetry.update();
         waitForStart();
 
-        // Arm Rotation control
-        double[] arm_positions = {INIT_ANGLE, 65, 87};
-        int current_arm_position_index = 0;
-
-        // Intake rotation control
-        double current_in_position = 1.0;
-
-        // PID variables
-        double prev_error = 0;
-        double Ki_sum = 0.0;
-
-        // booleans to allow for pressing the button once does a thing once
-        boolean arm_rot_input = false;
-
         timer = new ElapsedTime(ElapsedTime.Resolution.SECONDS);
         timer.reset();
-        double prev_time = 0;
 
         while (opModeIsActive()) {
 
@@ -138,31 +147,6 @@ public class DanChassisDrive extends LinearOpMode {
             telemetry.addData("Arm Extension Position", arm_extension);
             telemetry.addData("Arm Rotation Position", arm_angle);
 
-            // PIDG-EONNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-            double error = arm_positions[current_arm_position_index] - arm_angle;
-            Ki_sum += Math.abs(error) < 5 ? error : 0;
-
-            double p = error * Kp * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
-
-            double i = Ki_sum * Ki;
-
-            double d = (error - prev_error) * Kd;
-
-            double g = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
-
-            double min_rot_power = p + i + d + g;
-
-            min_rot_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
-
-            prev_error = error;
-
-            if (Math.abs(error) >= 5) {
-                Ki_sum = 0;
-                if (current_arm_position_index == 0) {
-                    min_rot_power = 0;
-                }
-            }
-
             if (gamepad2.dpad_up) {
                 if (!arm_rot_input) {
                     current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
@@ -180,13 +164,14 @@ public class DanChassisDrive extends LinearOpMode {
 //                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, -.5, 0.25 * (timer.time() - prev_time));
             }
 
-            arm_rot.setPower(min_rot_power);
+            arm_rot.setPower(rotatePID(arm_angle, arm_extension_percentage));
             arm_rot_input = gamepad2.dpad_up || gamepad2.dpad_down;
 
-            telemetry.addData("Arm Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
-            telemetry.addData("Passive Rotation Power", min_rot_power);
+            telemetry.addData("Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
+            telemetry.addData("Rotation Power", arm_rot.getPower());
 
-            telemetry.addData("Arm Extension Current (average)", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
+            telemetry.addData("Extension Current", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
+            telemetry.addData("Extension Power", (left_extend.getPower() + right_extend.getPower()) / 2.0);
 
             localizer.update();
 
@@ -216,8 +201,6 @@ public class DanChassisDrive extends LinearOpMode {
             }
 
             double intake = (gamepad2.right_stick_y + gamepad2.left_stick_y) / 2.0 + 0.5;
-
-            if (in_rot.getPosition() < 0.25) intake = 1.0;
 
             left.setPosition(intake);
             right.setPosition(intake);
@@ -303,9 +286,33 @@ public class DanChassisDrive extends LinearOpMode {
 
     }
 
-    public double rotatePID() {
-        return 0;
-    }
+    public double rotatePID(double arm_angle, double arm_extension_percentage) {
+        double error = arm_positions[current_arm_position_index] - arm_angle;
+        Ki_sum += Math.abs(error) < 5 ? error : 0;
+
+        double p = error * arm_rot_pidg.p * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
+
+        double i = Ki_sum * arm_rot_pidg.i;
+
+        double d = (error - prev_error) * arm_rot_pidg.d;
+
+        double g = Math.sin(Math.toRadians(arm_angle + 90)) * arm_rot_pidg.f;
+
+        double min_rot_power = p + i + d + g;
+
+        min_rot_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
+
+
+
+        if (Math.abs(error) >= 5) {
+            Ki_sum = 0;
+            if (current_arm_position_index == 0) {
+                min_rot_power = 0;
+            }
+        }
+
+        return min_rot_power;
+    };
 
     public void mecanumDrive() {
 
