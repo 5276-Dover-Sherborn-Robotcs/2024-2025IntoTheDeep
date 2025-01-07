@@ -40,6 +40,7 @@ public class DualLinearMotionProfile extends MotionProfile {
 
     public DualMotionSegment[] trajectory = {};
 
+    public int currentSegment = 0;
     public ElapsedTime timer;
     public double t0;
 
@@ -98,6 +99,8 @@ public class DualLinearMotionProfile extends MotionProfile {
 
         h_direction = Math.signum(dh);
         x_direction = Math.signum(dx);
+
+        p0 = Math.hypot(startPose.x, startPose.y);
 
 
         if (!(x_normal || r_normal)){
@@ -206,19 +209,19 @@ public class DualLinearMotionProfile extends MotionProfile {
 
                     if (isTrajNormal(dx2, MAX_VELOCITY, MAX_ACCELERATION)) {
 
-                        double dT12 = MAX_VELOCITY / MAX_ACCELERATION - dT1 + dt1 + dt2;
-                        double dT22 = dx2 / MAX_VELOCITY - dT1 + dt1 + dt2;
+                        double dT12 = MAX_VELOCITY / MAX_ACCELERATION;
+                        double dT22 = dx2 / MAX_VELOCITY;
 
-                        add_period(periods, 1, 0, dT12);
-                        add_period(periods, 0, 0, dT22);
-                        add_period(periods, -1, 0, MAX_VELOCITY / MAX_ACCELERATION);
+                        add_period(periods, 1, 0, dt2 + dT12);
+                        add_period(periods, 0, 0, dt2 + dT22);
+                        add_period(periods, -1, 0, 2.0);
 
                     } else {
 
                         double dT = sqrt(dx2 / MAX_ACCELERATION);
 
-                        add_period(periods, 1, 0, dT - dT1 + dt1 + dt2);
-                        add_period(periods, -1, 0, dT + dT - dT1 + dt1 + dt2);
+                        add_period(periods, 1, 0, dT + dt2);
+                        add_period(periods, -1, 0, dT + dT + dt2);
                     }
 
                 } else {
@@ -227,19 +230,19 @@ public class DualLinearMotionProfile extends MotionProfile {
 
                     if (isTrajNormal(h2, MAX_ROTATIONAL_VELOCITY, MAX_ROTATIONAL_ACCELERATION)) {
 
-                        double dT12 = MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION - dT1;
+                        double dT12 = MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION;
                         double dT22 = h2 / MAX_ROTATIONAL_VELOCITY;
 
-                        add_period(periods, 1, 0, dT12);
-                        add_period(periods, 0, 0, dT22);
-                        add_period(periods, -1, 0, MAX_ROTATIONAL_VELOCITY / MAX_ROTATIONAL_ACCELERATION);
+                        add_period(periods, 1, 0, dt2 + dT12);
+                        add_period(periods, 0, 0, dt2 + dT22);
+                        add_period(periods, -1, 0, 2.0);
 
                     } else {
 
                         double dT = sqrt(h2 / MAX_ROTATIONAL_ACCELERATION);
 
-                        add_period(periods, 1, 0, dT - dT1 + dt1 + dt2);
-                        add_period(periods, -1, 0, dT + dT - dT1 + dt1 + dt2);
+                        add_period(periods, 1, 0, dT + dt2);
+                        add_period(periods, -1, 0, dT + dT + dt2);
                     }
 
                 }
@@ -291,77 +294,86 @@ public class DualLinearMotionProfile extends MotionProfile {
     }
 
     public Pose2D[] get_time() {
-        double time = timer.time();
-        double x0 = Math.hypot(startPose.x, startPose.y);
-        double r0 = startPose.h;
+        double time = timer.time() - t0;
+        double x = Math.hypot(startPose.x, startPose.y);
+        double r = startPose.h;
         double[] v = {0, 0};
         double[] a = {0, 0};
-        for (DualMotionSegment segment: trajectory) {
-            if (time < segment.dt) {
-                x0 += segment.get_pos(time)[0];
-                r0 += segment.get_pos(time)[1];
-                v = segment.get_vel(time);
-                a = segment.get_acc(time);
-                break;
-            }
-            time -= segment.dt;
-            x0 += segment.get_pos(segment.dt)[0];
-            r0 += segment.get_pos(segment.dt)[1];
-            v = segment.get_vel(segment.dt);
-            a = segment.get_acc(segment.dt);
+
+        DualMotionSegment segment = trajectory[currentSegment];
+
+        if (time > segment.dt) {
+            t0 += segment.dt;
+            currentSegment++;
+            segment = trajectory[currentSegment];
         }
-        double h = theta - r0;
+
+        time = timer.time() - t0;
+        a = segment.get_acc(time);
+        v = segment.get_vel(time);
+        double[] p = segment.get_pos(time);
+        x += p[0]; r += p[0];
+
+        double theta = this.theta - r;
         return new Pose2D[]{
-                new Pose2D(x0 * cos, x0 * sin, r0),
-                new Pose2D(v[0] * Math.cos(h), v[0] * Math.sin(h), v[1]),
-                new Pose2D(a[0] * Math.cos(h), a[0] * Math.sin(h), a[1])
+                new Pose2D(x * cos, x * sin, r),
+                new Pose2D(v[0] * Math.cos(theta), v[0] * Math.sin(theta), v[1]),
+                new Pose2D(a[0] * Math.cos(theta), a[0] * Math.sin(theta), a[1])
         };
     }
 
     public Pose2D traj_pos_time() {
-        double time = timer.time();
-        double x0 = this.p0;
-        double r0 = startPose.h;
-        for (DualMotionSegment segment : trajectory) {
-            if (time < segment.dt) {
-                x0 += segment.get_pos(time)[0];
-                r0 += segment.get_pos(time)[1];
-                break;
-            }
-            time -= segment.dt;
-            x0 += segment.get_pos(segment.dt)[0];
-            r0 += segment.get_pos(segment.dt)[1];
+        double time = timer.time() - t0;
+        double x = this.p0;
+        double r = startPose.h;
+
+        DualMotionSegment segment = trajectory[currentSegment];
+
+        if (time > segment.dt) {
+            t0 += segment.dt;
+            currentSegment++;
+            segment = trajectory[currentSegment];
         }
 
-        return new Pose2D(x0 * cos, x0 * sin, r0);
+        time = timer.time() - t0;
+        double[] p = segment.get_pos(time);
+        x += p[0]; r += p[1];
+
+        return new Pose2D(x * cos, x * sin, r);
     }
 
     public Pose2D traj_vel_time() {
-        double time = timer.time();
-        double[] v = null;
-        for (DualMotionSegment segment : trajectory) {
-            if (time < segment.dt) {
-                v = segment.get_vel(time);
-                break;
-            }
-            time -= segment.dt;
-            v = segment.get(segment.dt);
+        double time = timer.time() - t0;
+        double[] v = {0, 0};
+
+        DualMotionSegment segment = trajectory[currentSegment];
+
+        if (time > segment.dt) {
+            t0 += segment.dt;
+            currentSegment++;
+            segment = trajectory[currentSegment];
         }
+
+        v = segment.get_vel(time);
 
         double a = theta - traj_pos_time().h;
         return new Pose2D(v[0] * Math.cos(a), v[0] * Math.sin(a), v[1]);
     }
 
     public Pose2D traj_acc_time() {
-        double time = timer.time();
+        double time = timer.time() - t0;
         double[] a = {0, 0};
-        for (DualMotionSegment segment : trajectory) {
-            if (time < segment.dt) {
-                a = new double[]{segment.a_t, segment.a_r};
-                break;
-            }
-            time -= segment.dt;
+
+        DualMotionSegment segment = trajectory[currentSegment];
+
+        if (time > segment.dt) {
+            t0 += segment.dt;
+            currentSegment++;
+            segment = trajectory[currentSegment];
         }
+
+        time = timer.time() - t0;
+        a = segment.get_acc(time);
 
         double h = theta - traj_pos_time().h;
         return new Pose2D(a[0] * Math.cos(h), a[0] * Math.sin(h), a[1]);

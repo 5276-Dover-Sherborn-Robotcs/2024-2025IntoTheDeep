@@ -2,6 +2,8 @@ package org.firstinspires.ftc.teamcode;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
@@ -37,7 +39,7 @@ public class motionProfileTest extends LinearOpMode {
 
     double[] outputs = {0, 0, 0, 0};
 
-    final double l = 15, b = 8;
+    static double lx = trackwidth/2.0, ly = wheelbase/2.0;
 
     MotionProfile motionProfile;
 
@@ -148,13 +150,14 @@ public class motionProfileTest extends LinearOpMode {
 
                     double x = Kv * vel.x + Ka * accel.x;
                     double y = Kv * vel.y + Ka * accel.y;
+                    double w = (Kv * vel.h + Ka * accel.h) * (lx + ly);
 
                     telemetry.addData("x and y", "%f, %f", x, y);
 
-                    outputs[0] = x - y;
-                    outputs[1] = x + y;
-                    outputs[2] = x + y;
-                    outputs[3] = x - y;
+                    outputs[0] = x - y - w;
+                    outputs[1] = x + y + w;
+                    outputs[2] = x + y - w;
+                    outputs[3] = x - y + w;
 //                    outputs[0] = x;
 //                    outputs[1] = y;
 //                    outputs[2] = y;
