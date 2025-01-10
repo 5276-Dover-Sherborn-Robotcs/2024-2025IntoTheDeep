@@ -282,6 +282,7 @@ public class DualLinearMotionProfile extends MotionProfile {
         }
 
         trajectory = collection.toArray(new DualMotionSegment[periods.size()]);
+        duration = t0;
 
     }
 
@@ -294,7 +295,15 @@ public class DualLinearMotionProfile extends MotionProfile {
     }
 
     public Pose2D[] get_time() {
-        double time = timer.time() - t0;
+        double time = timer.time();
+        if (time >= duration) {
+            return new Pose2D[]{
+                    endPose,
+                    new Pose2D(0, 0, 0),
+                    new Pose2D(0, 0, 0)
+            };
+        }
+        time -= t0;
         double x = Math.hypot(startPose.x, startPose.y);
         double r = startPose.h;
         double[] v = {0, 0};

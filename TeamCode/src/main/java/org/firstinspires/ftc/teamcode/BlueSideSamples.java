@@ -2,13 +2,17 @@ package org.firstinspires.ftc.teamcode;
 
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.acmerobotics.roadrunner.geometry.Pose2d;
+import com.qualcomm.hardware.rev.RevColorSensorV3;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -16,22 +20,31 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.teamcode.drive.SampleMecanumDrive;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
+import org.firstinspires.ftc.teamcode.util.Pose2D;
+
+import java.util.ArrayList;
 
 @Config
 @Autonomous(name="Blue Side Samples")
 public class BlueSideSamples extends LinearOpMode {
 
+    /*
+        TODO: Maybe wrap stuff like the arm angle, the drive train, the intakes, all in a seperate class and call an update() method?
+     */
+
+
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
-    enum COMMAND {
-        MOVE,
-        ROTATE,
-        EXTEND,
-        NOTHING
-    }
+    RevColorSensorV3 colorSensor;
 
-    SampleMecanumDrive drive;
+    enum states {
+        IDLE,
+        MOVING,
+        GRABBING,
+        DEPOSITING
+    }
 
     public int count = 0;
 
@@ -49,51 +62,57 @@ public class BlueSideSamples extends LinearOpMode {
     public static double STRAFE_GAIN = 0.05, Yi = 0.001;
     public static double ANG_GAIN = 0.5/(Math.PI/2), Hi = 0.02;
 
-    public double[] target_rotations = {
-            0, 65, 0
-    };
-    public int target_rotation_index = 0;
+    public boolean we_have_a_scoring_element = false;
+
+    public enum rotations {
+        IDLE,
+        SAMPLES,
+        SPECIMEN
+    }
+    public rotations target_rotation = rotations.IDLE;
     public double min_rotation_power = 0.0;
     public double rotation_sum = 0;
 
-    public double[] target_extensions = {
-            0, 1, 0
-    };
-    public int target_extension_index = 0;
+    public enum extensions {
+        IDLE,
+        SAMPLES,
+        SPECIMEN
+    }
+    public extensions target_extension = extensions.IDLE;
     public double min_extension_power = 0.0;
     public double extension_sum = 0;
 
-    public Pose2d[] target_positions = {
-            new Pose2d(0, 0, 0),
-            new Pose2d(12, 0, 0),
-            new Pose2d(12, 12, 0),
-            new Pose2d(0, 12, 0),
-            new Pose2d(0, 0, 0)
+    public enum positions {
+        START,
+        BUCKET,
+        LEFT_SAMPLE,
+        MIDDLE_SAMPLE,
+        RIGHT_SAMPLE,
+        SUBMERSIBLE
+    }
+    public positions[] target_positions = {
+            positions.BUCKET,
+            positions.RIGHT_SAMPLE,
+            positions.BUCKET,
+            positions.MIDDLE_SAMPLE,
+            positions.BUCKET,
+            positions.LEFT_SAMPLE,
+            positions.BUCKET,
+            positions.SUBMERSIBLE
     };
     public int target_position_index = 0;
     public double x_sum = 0;
     public double y_sum = 0;
     public double h_sum = 0;
 
-    public COMMAND current_command = COMMAND.NOTHING;
-    public COMMAND[] commands = {
-            COMMAND.NOTHING,
-            COMMAND.MOVE,
-            COMMAND.MOVE,
-            COMMAND.MOVE,
-            COMMAND.MOVE
-    };
-    public int command_index = 0;
+    DualLinearMotionProfile[] path;
+
+    public Localizer localizer;
 
     @Override
     public void runOpMode() {
 
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
-
-        drive = new SampleMecanumDrive(hardwareMap);
-
-        drive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        drive.setPoseEstimate(target_positions[0]);
 
         fl = hardwareMap.get(DcMotorEx.class, "fl");
         fr = hardwareMap.get(DcMotorEx.class, "fr");
@@ -131,71 +150,90 @@ public class BlueSideSamples extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
+        colorSensor = hardwareMap.get(RevColorSensorV3.class, "colorSensor");
+        while (!colorSensor.initialize()) {
+            telemetry.addLine("Starting color sensor");
+            telemetry.update();
+        }
+        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+
+        localizer = new Localizer(hardwareMap, telemetry);
+
+        ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
+        Pose2D current_pos = getTargetPosition(positions.START);
+
+        for (positions pos : target_positions) {
+            Pose2D target_pos = getTargetPosition(pos);
+            temp_path.add(
+                    new DualLinearMotionProfile(
+                            current_pos,
+                            target_pos,
+                            telemetry
+                    )
+            );
+            current_pos = target_pos;
+        }
+
+        path = temp_path.toArray(new DualLinearMotionProfile[0]);
+
         waitForStart();
 
         while (!isStopRequested()) {
 
-            Pose2d poseEstimate = drive.getPoseEstimate();
-            telemetry.addData("x", poseEstimate.getX());
-            telemetry.addData("y", poseEstimate.getY());
-            telemetry.addData("heading", poseEstimate.getHeading());
+            localizer.update();
+
+            Pose2D poseEstimate = localizer.getPoseEstimate();
+            telemetry.addData("x", poseEstimate.x);
+            telemetry.addData("y", poseEstimate.y);
+            telemetry.addData("heading", poseEstimate.h);
 
             double arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
+            double arm_extension = 0;
 
-            min_rotation_power = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
+            boolean move = movePID(path[target_position_index]);
+            double rotate = rotatePID(arm_angle);
+            double extend = extendPID(arm_extension);
 
-            drive.update();
+            telemetry.addData("Current Target Position", target_positions[target_position_index]);
+            telemetry.addData("Current Target Extension", target_extension);
+            telemetry.addData("Current Target Rotation", target_rotation);
 
-            telemetry.addData("Current Target Position Index", target_position_index);
-            telemetry.addData("Current Target Extension Index", target_extension_index);
-            telemetry.addData("Current Target Rotation Index", target_rotation_index);
+            Pose2D poseTarget = getTargetPosition(target_positions[target_position_index]);
+            double dist = poseTarget.dist(poseEstimate);
 
-            switch (current_command) {
-                case NOTHING:
-                    command_index++;
+            if (target_positions[target_position_index] == positions.BUCKET) {
+                if (dist < 5) target_rotation = rotations.SAMPLES;
+            }
 
-                    if (command_index == commands.length) return;
 
-                    current_command = commands[command_index];
-                    switch (current_command) {
-                        case MOVE:
-                            target_position_index++;
-                            break;
-                        case ROTATE:
-                            target_rotation_index++;
-                            break;
-                        case EXTEND:
-                            target_extension_index++;
-                            break;
-                    }
-                    break;
-                case MOVE:
-                    if (movePID(poseEstimate)) {
-                        x_sum = 0;
-                        y_sum = 0;
-                        h_sum = 0;
-                        current_command = COMMAND.NOTHING;
-                        drive.setWeightedDrivePower(
-                                new Pose2d(
-                                        0,
-                                        0,
-                                        0
-                                )
-                        );
-                    }
-                    break;
-                case ROTATE:
-                    if (rotatePID(arm_angle)) {
-                        current_command = COMMAND.NOTHING;
-                        rotation_sum = 0;
-                    }
-                    break;
-                case EXTEND:
-                    if (extendPID(0)) {
-                        current_command = COMMAND.NOTHING;
-                        extension_sum = 0;
-                    }
-                    break;
+//                    switch (current_command) {
+//                        case MOVE:
+//                            target_position_index++;
+//                            path[target_position_index].start();
+//                            break;
+//                        case ROTATE:
+//                            if (target_positions[target_position_index] == positions.BUCKET) {
+//                                target_rotation = rotations.SAMPLES;
+//                            } else {
+//                                target_rotation = rotations.IDLE;
+//                            }
+//                            break;
+//                        case EXTEND:
+//                            if (target_positions[target_position_index] == positions.BUCKET) {
+//                                target_extension = extensions.SAMPLES;
+//                            } else {
+//                                target_extension = extensions.IDLE;
+//                            }
+//                            break;
+//                    }
+            if (movePID(path[target_position_index])) {
+
+                if
+
+            }
+
+            if (getTargetPosition(positions.BUCKET).dist(localizer.getPoseEstimate()) < 5) {
+                target_rotation = rotations.SAMPLES;
             }
 
             telemetry.addData("Count", count);
@@ -209,25 +247,18 @@ public class BlueSideSamples extends LinearOpMode {
 
     }
 
-    public boolean movePID(Pose2d poseEstimate) {
+    public boolean movePID(DualLinearMotionProfile profile) {
+        Pose2D[] at_time = profile.get_time();
 
-        double error_x = target_positions[target_position_index].getX() - poseEstimate.getX();
-        double error_y = target_positions[target_position_index].getY() - poseEstimate.getY();
-        double error_heading = target_positions[target_position_index].getHeading() - poseEstimate.getHeading();
+        Pose2D poseTarget = at_time[0];
+        Pose2D poseEstimate = localizer.getPoseEstimate();
 
-        if ((2*Math.PI - Math.abs(error_heading)) < Math.abs(error_heading)) {
-            error_heading = 2*Math.PI - Math.abs(error_heading);
-        }
+        double error_x = poseTarget.x - poseEstimate.x;
+        double error_y = poseTarget.y - poseEstimate.y;
+        double error_heading = poseTarget.h - poseEstimate.h;
 
-        if (Math.abs(error_x) < 0.2 && Math.abs(error_y) < 0.2 && Math.abs(error_heading) < Math.PI/180) {
-            count++;
-        } else {
-            count = 0;
-        }
-
-        if (count == 50) {
-            count = 0;
-            return true;
+        if ((2 * Math.PI - Math.abs(error_heading)) < Math.abs(error_heading)) {
+            error_heading = -Math.copySign(2 * Math.PI - Math.abs(error_heading), error_heading);
         }
 
         if (Math.abs(error_x) < 0.1) x_sum = 0;
@@ -248,30 +279,46 @@ public class BlueSideSamples extends LinearOpMode {
         strafe += y_sum * Yi;
         turn += h_sum * Hi;
 
-        forward = forward * Math.cos(-poseEstimate.getHeading()) - strafe * Math.sin(-poseEstimate.getHeading());
-        strafe = forward * Math.sin(-poseEstimate.getHeading()) + strafe * Math.cos(-poseEstimate.getHeading());
+        forward = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
+        strafe = forward * Math.sin(-poseEstimate.h) + strafe * Math.cos(-poseEstimate.h);
 
         strafe *= LATERAL_MULTIPLIER;
 
-        mecanumDrive(forward, -strafe, -turn);
+        Pose2D vel = at_time[1];
+        Pose2D accel = at_time[2];
+
+        double x = vel.x * Kv + accel.x * Ka + forward;
+        double y = vel.y * Kv + accel.y * Ka + strafe;
+        double w = (vel.h * Kv + accel.h * Ka) * (trackwidth/2 + wheelbase/2) + turn;
+
+        double pfl = x - y - w;
+        double pfr = x + y + w;
+        double pbl = x + y - w;
+        double pbr = x - y + w;
 
         telemetry.addData("Forward", forward);
         telemetry.addData("Strafe", strafe);
-        telemetry.addData("Hedaing", turn);
+        telemetry.addData("Heading", turn);
 
-        return false;
+        return profile.is_traj_done();
 
     }
 
-    public boolean rotatePID(double arm_angle) {
-        return false;
+    public double rotatePID(double arm_angle) {
+
+        // todo: put the pid from DanChassisDrive in here and make it work
+
+        return getTargetRotation(target_rotation) - arm_angle;
     }
 
-    public boolean extendPID(double arm_extension) {
-        return false;
+    public double extendPID(double arm_extension) {
+
+        // todo: make some extension pid code using Kl and the arm_angle
+
+        return getTargetExtension(target_extension) - arm_extension;
     }
 
-    public void mecanumDrive(double drivey, double drivex, double turn) {
+    public double[] mecanumDrive(double drivey, double drivex, double turn) {
 
         double pfl, pfr, pbl, pbr;
 
@@ -296,11 +343,55 @@ public class BlueSideSamples extends LinearOpMode {
         }
 
         // negative cause it was all backwards
-        fl.setPower(-pfl);
-        fr.setPower(-pfr);
-        bl.setPower(-pbl);
-        br.setPower(-pbr);
+        return new double[]{-pfl, -pfr, -pbl, -pbr};
 
+    }
+
+
+    /*
+        Takes a position enum and returns a pose2d
+    */
+    public Pose2D getTargetPosition(positions pos) {
+        switch (pos) {
+            case START:
+                return new Pose2D(36, 72+trackwidth/2/2.54+1, 0);
+            case BUCKET:
+                return new Pose2D(60, 60, Math.PI/4);
+            case LEFT_SAMPLE:
+                return new Pose2D(63, 33, -Math.PI/4);
+            case SUBMERSIBLE:
+                return new Pose2D(36, 12, -Math.PI);
+            case RIGHT_SAMPLE:
+                return new Pose2D(48, 36, -Math.PI/2);
+            case MIDDLE_SAMPLE:
+                return new Pose2D(60, 36, -Math.PI/2);
+        }
+
+        return new Pose2D(-1000, -1000, 0);
+    }
+
+    public double getTargetRotation(rotations rot) {
+        switch (rot) {
+            case IDLE:
+                return 0.0;
+            case SAMPLES:
+                return 65.0;
+            case SPECIMEN:
+                return 70.0;
+        }
+        return 0.0;
+    }
+
+    public double getTargetExtension(extensions ext) {
+        switch (ext) {
+            case IDLE:
+                return 0.0;
+            case SPECIMEN:
+                return 0.3;
+            case SAMPLES:
+                return 0.85;
+        }
+        return 0.0;
     }
 
 }

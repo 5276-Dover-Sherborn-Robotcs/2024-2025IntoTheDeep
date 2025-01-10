@@ -12,9 +12,8 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.teamcode.util.Encoder;
+import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 public class Localizer {
 
@@ -101,7 +100,7 @@ public class Localizer {
 
         heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
         heading += (heading < 0) ? 2*PI : 0;
-        d_heading  = heading - prev_heading;
+        d_heading = heading - prev_heading;
 
         current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
@@ -179,6 +178,12 @@ public class Localizer {
 
     }
 
+    public void setPoseEstimate(Pose2D pose) {
+        gx = pose.x;
+        gy = pose.y;
+        heading = pose.h;
+    }
+
     public void reset() {
 
         gx = 0;
@@ -213,7 +218,7 @@ public class Localizer {
     }
 
     public Pose2D getPoseEstimate() {
-        return new Pose2D(DistanceUnit.CM, gx, gy, AngleUnit.RADIANS, heading);
+        return new Pose2D(gx, gy, heading);
     }
 
     public double[] getDeltas() {
