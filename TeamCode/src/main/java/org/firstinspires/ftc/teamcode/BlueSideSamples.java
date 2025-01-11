@@ -3,8 +3,8 @@ package org.firstinspires.ftc.teamcode;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_CM;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
@@ -18,6 +18,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -37,9 +38,11 @@ public class BlueSideSamples extends LinearOpMode {
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
+    Servo intake_left, intake_right, intake_pitch, intake_roll;
+
     RevColorSensorV3 colorSensor;
 
-    enum states {
+    public enum states {
         IDLE,
         MOVING,
         GRABBING,
@@ -63,6 +66,15 @@ public class BlueSideSamples extends LinearOpMode {
     public static double ANG_GAIN = 0.5/(Math.PI/2), Hi = 0.02;
 
     public boolean we_have_a_scoring_element = false;
+
+    public enum intake_positions {
+        IDLE,
+        BUCKET,
+        GROUND,
+        SPECIMEN
+    }
+    public intake_positions intake_position = intake_positions.IDLE;
+    public double intake = 0.5;
 
     public enum rotations {
         IDLE,
@@ -109,6 +121,17 @@ public class BlueSideSamples extends LinearOpMode {
 
     public Localizer localizer;
 
+    public states state = states.IDLE;
+
+    public double arm_angle;
+    public double arm_extension;
+
+    public boolean profile_done;
+    public double rotate_error;
+    public double extend_error;
+
+    Pose2D poseEstimate;
+
     @Override
     public void runOpMode() {
 
@@ -150,6 +173,11 @@ public class BlueSideSamples extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
+        intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
+
+        intake_pitch.setDirection(Servo.Direction.REVERSE);
+        intake_pitch.setPosition(0);
+
         colorSensor = hardwareMap.get(RevColorSensorV3.class, "colorSensor");
         while (!colorSensor.initialize()) {
             telemetry.addLine("Starting color sensor");
@@ -180,70 +208,106 @@ public class BlueSideSamples extends LinearOpMode {
 
         while (!isStopRequested()) {
 
-            localizer.update();
+            switch (state) {
+                case IDLE:
+                    state = states.MOVING;
+                case MOVING:
+                    double poseDistance = getTargetPosition(target_positions[target_position_index]).dist(poseEstimate);
 
-            Pose2D poseEstimate = localizer.getPoseEstimate();
-            telemetry.addData("x", poseEstimate.x);
-            telemetry.addData("y", poseEstimate.y);
-            telemetry.addData("heading", poseEstimate.h);
+                    if (poseDistance < 5) {
+                        switch (target_positions[target_position_index]) {
+                            case BUCKET:
+                                target_rotation = rotations.SAMPLES;
+                            case LEFT_SAMPLE:
+                            case MIDDLE_SAMPLE:
+                            case RIGHT_SAMPLE:
+                                setIntakePosition(intake_positions.GROUND);
 
-            double arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
-            double arm_extension = 0;
+                        }
+                    }
 
-            boolean move = movePID(path[target_position_index]);
-            double rotate = rotatePID(arm_angle);
-            double extend = extendPID(arm_extension);
+                    if (profile_done) {
+                        switch (target_positions[target_position_index]) {
+                            case BUCKET:
+                                state = states.DEPOSITING;
+                                break;
+                            case LEFT_SAMPLE:
+                            case RIGHT_SAMPLE:
+                            case MIDDLE_SAMPLE:
+                                state = states.GRABBING;
+                                break;
+                            case SUBMERSIBLE:
+                                state = states.IDLE;
+                                break;
+                            case START:
+                                state = states.MOVING;
+                        }
+                    }
+                    break;
 
-            telemetry.addData("Current Target Position", target_positions[target_position_index]);
-            telemetry.addData("Current Target Extension", target_extension);
-            telemetry.addData("Current Target Rotation", target_rotation);
+                case GRABBING:
 
-            Pose2D poseTarget = getTargetPosition(target_positions[target_position_index]);
-            double dist = poseTarget.dist(poseEstimate);
+                    setIntakePosition(intake_positions.GROUND);
 
-            if (target_positions[target_position_index] == positions.BUCKET) {
-                if (dist < 5) target_rotation = rotations.SAMPLES;
+                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                    if (!we_have_a_scoring_element) {
+                        left_extend.setPower(0.1);
+                        right_extend.setPower(0.1);
+                        intake = 1;
+                        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                    } else {
+
+                        setIntakePosition(intake_positions.IDLE);
+
+                        state = states.MOVING;
+                        target_position_index++;
+                    }
+                    break;
+
+                case DEPOSITING:
+
+                    if (target_extension == extensions.IDLE && rotate_error < 3) {
+                        target_extension = extensions.SAMPLES;
+
+                    } else if (extend_error < 10) setIntakePosition(intake_positions.BUCKET);
+
+                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                    if (extend_error < 2 && we_have_a_scoring_element) {
+                        intake = 0.0;
+                    }
+
             }
 
-
-//                    switch (current_command) {
-//                        case MOVE:
-//                            target_position_index++;
-//                            path[target_position_index].start();
-//                            break;
-//                        case ROTATE:
-//                            if (target_positions[target_position_index] == positions.BUCKET) {
-//                                target_rotation = rotations.SAMPLES;
-//                            } else {
-//                                target_rotation = rotations.IDLE;
-//                            }
-//                            break;
-//                        case EXTEND:
-//                            if (target_positions[target_position_index] == positions.BUCKET) {
-//                                target_extension = extensions.SAMPLES;
-//                            } else {
-//                                target_extension = extensions.IDLE;
-//                            }
-//                            break;
-//                    }
-            if (movePID(path[target_position_index])) {
-
-                if
-
-            }
-
-            if (getTargetPosition(positions.BUCKET).dist(localizer.getPoseEstimate()) < 5) {
-                target_rotation = rotations.SAMPLES;
-            }
-
-            telemetry.addData("Count", count);
-            telemetry.update();
+            update_things();
 
         }
 
-        while (!isStopRequested()) {
+    }
 
-        }
+    public void update_things() {
+
+        intake_left.setPosition(intake);
+        intake_right.setPosition(intake);
+
+        localizer.update();
+
+        poseEstimate = localizer.getPoseEstimate();
+        telemetry.addData("x", poseEstimate.x);
+        telemetry.addData("y", poseEstimate.y);
+        telemetry.addData("heading", poseEstimate.h);
+
+        arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
+        arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM);
+
+        profile_done = movePID(path[target_position_index]);
+        rotate_error = rotatePID(arm_angle);
+        extend_error = extendPID(arm_extension);
+
+        telemetry.addData("Current Target Position", target_positions[target_position_index]);
+        telemetry.addData("Current Target Extension", target_extension);
+        telemetry.addData("Current Target Rotation", target_rotation);
+
+        telemetry.update();
 
     }
 
@@ -295,6 +359,11 @@ public class BlueSideSamples extends LinearOpMode {
         double pfr = x + y + w;
         double pbl = x + y - w;
         double pbr = x - y + w;
+
+        fl.setPower(pfl);
+        fr.setPower(pfr);
+        bl.setPower(pbl);
+        br.setPower(pbr);
 
         telemetry.addData("Forward", forward);
         telemetry.addData("Strafe", strafe);
@@ -392,6 +461,26 @@ public class BlueSideSamples extends LinearOpMode {
                 return 0.85;
         }
         return 0.0;
+    }
+
+    public double getIntakePosition(intake_positions pos) {
+        switch (pos) {
+            case IDLE:
+                return 0.0;
+            case BUCKET:
+                return 1.0;
+            case SPECIMEN:
+                return 0.5;
+            case GROUND:
+                return 0.75;
+        }
+        return 0.0;
+    }
+
+    public void setIntakePosition(intake_positions pos) {
+
+        // TODO: Implementation for the intake
+
     }
 
 }

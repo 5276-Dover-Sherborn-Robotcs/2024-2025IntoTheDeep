@@ -10,7 +10,7 @@ public class DanDriveConstants {
     public static double WHEEL_DIAMETER = 9.6;
     public static double WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * Math.PI;
 
-    public static double MAX_VELOCITY_RPS = 53.3257;
+    public static double MAX_VELOCITY_RPS = 5.2 * 0.9;
     public static double MAX_ACCELERATION_RPS = MAX_VELOCITY_RPS / 2;
 
     public static double GEAR_RATIO = 1.0;
