@@ -4,7 +4,7 @@ package org.firstinspires.ftc.teamcode;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_CM;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
@@ -12,7 +12,6 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.qualcomm.hardware.rev.RevColorSensorV3;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -21,7 +20,6 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
@@ -40,23 +38,15 @@ public class BlueSideSamples extends LinearOpMode {
 
     Servo intake_left, intake_right, intake_pitch, intake_roll;
 
-    RevColorSensorV3 colorSensor;
+//    RevColorSensorV3 colorSensor;
 
-    public enum states {
-        IDLE,
-        MOVING,
-        GRABBING,
-        DEPOSITING
-    }
 
     public int count = 0;
 
     public double LATERAL_MULTIPLIER = 1.1;
 
-    public static double TEST_X = 36;
-    public static double TEST_Y = 0;
-    public static double TEST_H = 0;
 
+    // PID Control constants to account for any error in position
     public static double MAX_FORWARD_SPEED = 0.4;
     public static double MAX_STRAFE_SPEED = 0.4;
     public static double MAX_ANG_SPEED = 0.3;
@@ -65,43 +55,72 @@ public class BlueSideSamples extends LinearOpMode {
     public static double STRAFE_GAIN = 0.05, Yi = 0.001;
     public static double ANG_GAIN = 0.5/(Math.PI/2), Hi = 0.02;
 
+
+    // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
 
+
+    // These are intake positions. They assume that we have servo for pitch and a servo for roll. All numbers are on a scale of 0.0 to 1.0
     public enum intake_positions {
-        IDLE,
-        BUCKET,
-        GROUND,
-        SPECIMEN
+        IDLE(0.0, 0.0),
+        BUCKET(1.0, 1.0),
+        GROUND(0.0, 0.75),
+        SPECIMEN(0.0, 0.5);
+
+        public final double roll;
+        public final double pitch;
+
+        intake_positions(double roll, double pitch) {
+            this.roll = roll;
+            this.pitch = pitch;
+        }
     }
     public intake_positions intake_position = intake_positions.IDLE;
-    public double intake = 0.5;
+    public double intake = 0.5; // This is the current power of the intake servos. 0.5 is not moving, 0.0 is one way, 1.0 is the other
 
+    // Rotation positions, mostly just for a level of abstraction. Following that are a couple pid used things
     public enum rotations {
-        IDLE,
-        SAMPLES,
-        SPECIMEN
+        IDLE(0),
+        SAMPLES(65),
+        SPECIMEN(75);
+
+        public final double rotation;
+
+        rotations(double rotation) {this.rotation = rotation;}
     }
     public rotations target_rotation = rotations.IDLE;
     public double min_rotation_power = 0.0;
     public double rotation_sum = 0;
 
+    //Extension positions, in inches
     public enum extensions {
-        IDLE,
-        SAMPLES,
-        SPECIMEN
+        IDLE(0),
+        SAMPLES(47),
+        SPECIMEN(25);
+
+        public final double extension;
+
+        extensions(double extension) {this.extension = extension;}
+
     }
     public extensions target_extension = extensions.IDLE;
     public double min_extension_power = 0.0;
     public double extension_sum = 0;
 
+    // Positions the robot wants to be at
     public enum positions {
-        START,
-        BUCKET,
-        LEFT_SAMPLE,
-        MIDDLE_SAMPLE,
-        RIGHT_SAMPLE,
-        SUBMERSIBLE
+        START(new Pose2D(36, 72+trackwidth/2/2.54+1, 0)),
+        BUCKET(new Pose2D(60, 60, Math.PI/4)),
+        LEFT_SAMPLE(new Pose2D(63, 33, -Math.PI/4)),
+        SUBMERSIBLE(new Pose2D(36, 12, -Math.PI)),
+        RIGHT_SAMPLE(new Pose2D(48, 36, -Math.PI/2)),
+        MIDDLE_SAMPLE(new Pose2D(60, 36, -Math.PI/2));
+
+        public final Pose2D pose;
+
+        positions(Pose2D pose) {this.pose = pose;}
     }
+    // The order of positions the robot wants to move to
     public positions[] target_positions = {
             positions.BUCKET,
             positions.RIGHT_SAMPLE,
@@ -114,29 +133,43 @@ public class BlueSideSamples extends LinearOpMode {
     };
     public int target_position_index = 0;
     public double x_sum = 0;
-    public double y_sum = 0;
+    public double y_sum = 0; // some pid control
     public double h_sum = 0;
 
+    // This is used to store all the motion profiles that move from each position.
     DualLinearMotionProfile[] path;
 
+    // Localizer
     public Localizer localizer;
+    Pose2D poseEstimate;
 
-    public states state = states.IDLE;
+    // Current state of the robot, IDLE is only used at the end of autonomous
+    public enum states {
+        IDLE,
+        MOVING,
+        GRABBING,
+        DEPOSITING
+    }
+    public states state = states.MOVING;
 
+    // Global variables so they can be accessed across methods
     public double arm_angle;
     public double arm_extension;
 
+    // Status values for each PID system.
     public boolean profile_done;
     public double rotate_error;
     public double extend_error;
+    public double intake_error;
 
-    Pose2D poseEstimate;
 
     @Override
     public void runOpMode() {
 
+        // Multiple telemetry, honestly doesn't quite matter.
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
+        // Motors :D
         fl = hardwareMap.get(DcMotorEx.class, "fl");
         fr = hardwareMap.get(DcMotorEx.class, "fr");
         bl = hardwareMap.get(DcMotorEx.class, "bl");
@@ -156,6 +189,7 @@ public class BlueSideSamples extends LinearOpMode {
         br.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         br.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
 
+        // More motors
         arm_rot = hardwareMap.get(DcMotorEx.class, "m7");
         left_extend = hardwareMap.get(DcMotorEx.class, "m6");
         right_extend = hardwareMap.get(DcMotorEx.class, "m5");
@@ -173,33 +207,41 @@ public class BlueSideSamples extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
+        // Right now we only have an servo for pitch, hopefully we end up with one for roll as well.
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
+//        intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
         intake_pitch.setDirection(Servo.Direction.REVERSE);
         intake_pitch.setPosition(0);
+//        intake_roll.setDirection(Servo.Direction.FORWARD);
+//        intake_roll.setPosition(0);
 
-        colorSensor = hardwareMap.get(RevColorSensorV3.class, "colorSensor");
-        while (!colorSensor.initialize()) {
-            telemetry.addLine("Starting color sensor");
-            telemetry.update();
-        }
-        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+        // Color sensor will be added, the autonomous sorta relies on it to actually work. It's possible to do without, but not recommended.
+//        colorSensor = hardwareMap.get(RevColorSensorV3.class, "colorSensor");
+//        while (!colorSensor.initialize()) {
+//            telemetry.addLine("Starting color sensor");
+//            telemetry.update();
+//        }
+//        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
 
+        // Localizer
         localizer = new Localizer(hardwareMap, telemetry);
 
+
+        // Here, we iterate through each positoin we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
-        Pose2D current_pos = getTargetPosition(positions.START);
+        Pose2D current_pose = positions.START.pose;
 
         for (positions pos : target_positions) {
-            Pose2D target_pos = getTargetPosition(pos);
+            Pose2D target_pose = pos.pose;
             temp_path.add(
                     new DualLinearMotionProfile(
-                            current_pos,
-                            target_pos,
+                            current_pose,
+                            target_pose,
                             telemetry
                     )
             );
-            current_pos = target_pos;
+            current_pose = target_pose;
         }
 
         path = temp_path.toArray(new DualLinearMotionProfile[0]);
@@ -208,11 +250,14 @@ public class BlueSideSamples extends LinearOpMode {
 
         while (!isStopRequested()) {
 
+            intake = 0.5;
+
             switch (state) {
                 case IDLE:
-                    state = states.MOVING;
+                    update_things();
+                    idle();
                 case MOVING:
-                    double poseDistance = getTargetPosition(target_positions[target_position_index]).dist(poseEstimate);
+                    double poseDistance = target_positions[target_position_index].pose.dist(poseEstimate);
 
                     if (poseDistance < 5) {
                         switch (target_positions[target_position_index]) {
@@ -249,14 +294,14 @@ public class BlueSideSamples extends LinearOpMode {
 
                     setIntakePosition(intake_positions.GROUND);
 
-                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+//                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
                     if (!we_have_a_scoring_element) {
                         left_extend.setPower(0.1);
                         right_extend.setPower(0.1);
                         intake = 1;
-                        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                        we_have_a_scoring_element = arm_extension > 10;
+//                        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
                     } else {
-
                         setIntakePosition(intake_positions.IDLE);
 
                         state = states.MOVING;
@@ -266,14 +311,64 @@ public class BlueSideSamples extends LinearOpMode {
 
                 case DEPOSITING:
 
+                    // TODO: make this better
+
+                    if (we_have_a_scoring_element) {
+                        if (target_extension == extensions.SAMPLES) {
+                            if (extend_error < 3) {
+                                intake = 0.0;
+                            } else if (extend_error < 10) {
+                                setIntakePosition(intake_positions.BUCKET);
+                            }
+                        } else if (rotate_error < 3 && target_rotation == rotations.SAMPLES) {
+                            target_extension = extensions.SAMPLES;
+                        }
+                    } else {
+                        if (target_extension == extensions.SAMPLES) {
+                            if (extend_error < 3) {
+                                setIntakePosition(intake_positions.IDLE);
+                            }
+                        }
+                    }
+
+
+
+
+                    switch (target_extension) {
+                        case IDLE:
+                            if (we_have_a_scoring_element) {
+                                if (rotate_error < 3) target_extension = extensions.SAMPLES;
+                            } else {
+                                if (extend_error < 5) target_rotation = rotations.IDLE;
+                            }
+                            break;
+                        case SAMPLES:
+                            if (we_have_a_scoring_element) {
+                                if (extend_error < 10) setIntakePosition(intake_positions.BUCKET);
+                                if (extend_error < 5) {
+                                    intake = 0.0;
+                                }
+                            } else {
+                                setIntakePosition(intake_positions.IDLE);
+                                target_extension = extensions.IDLE;
+                            }
+                    }
+
                     if (target_extension == extensions.IDLE && rotate_error < 3) {
                         target_extension = extensions.SAMPLES;
 
                     } else if (extend_error < 10) setIntakePosition(intake_positions.BUCKET);
 
-                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
-                    if (extend_error < 2 && we_have_a_scoring_element) {
+//                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                    if (extend_error < 5 && we_have_a_scoring_element) {
                         intake = 0.0;
+                    } else {
+                        setIntakePosition(intake_positions.IDLE);
+                        target_extension = extensions.IDLE;
+
+                        if (extend_error < 10) target_rotation = rotations.IDLE;
+                        if (rotate_error < 5) state = states.MOVING;
+
                     }
 
             }
@@ -297,11 +392,11 @@ public class BlueSideSamples extends LinearOpMode {
         telemetry.addData("heading", poseEstimate.h);
 
         arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
-        arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM);
+        arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
 
         profile_done = movePID(path[target_position_index]);
         rotate_error = rotatePID(arm_angle);
-        extend_error = extendPID(arm_extension);
+        if (state != states.GRABBING) extend_error = extendPID(arm_extension);
 
         telemetry.addData("Current Target Position", target_positions[target_position_index]);
         telemetry.addData("Current Target Extension", target_extension);
@@ -311,11 +406,15 @@ public class BlueSideSamples extends LinearOpMode {
 
     }
 
+    // Movement feedforward and PID control
+
     public boolean movePID(DualLinearMotionProfile profile) {
+        // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
         Pose2D[] at_time = profile.get_time();
 
         Pose2D poseTarget = at_time[0];
-        Pose2D poseEstimate = localizer.getPoseEstimate();
+
+        // PID control to account for error in where we are over time.
 
         double error_x = poseTarget.x - poseEstimate.x;
         double error_y = poseTarget.y - poseEstimate.y;
@@ -348,6 +447,8 @@ public class BlueSideSamples extends LinearOpMode {
 
         strafe *= LATERAL_MULTIPLIER;
 
+
+        // Feedforward control
         Pose2D vel = at_time[1];
         Pose2D accel = at_time[2];
 
@@ -373,19 +474,23 @@ public class BlueSideSamples extends LinearOpMode {
 
     }
 
+    // Its also possible to make some combined PID/kinematic controller for both rotation and extension, as polar coordinates?
+
     public double rotatePID(double arm_angle) {
 
         // todo: put the pid from DanChassisDrive in here and make it work
 
-        return getTargetRotation(target_rotation) - arm_angle;
+        return target_rotation.rotation - arm_angle;
     }
 
     public double extendPID(double arm_extension) {
 
         // todo: make some extension pid code using Kl and the arm_angle
 
-        return getTargetExtension(target_extension) - arm_extension;
+        return target_extension.extension - arm_extension;
     }
+
+
 
     public double[] mecanumDrive(double drivey, double drivex, double turn) {
 
@@ -414,67 +519,6 @@ public class BlueSideSamples extends LinearOpMode {
         // negative cause it was all backwards
         return new double[]{-pfl, -pfr, -pbl, -pbr};
 
-    }
-
-
-    /*
-        Takes a position enum and returns a pose2d
-    */
-    public Pose2D getTargetPosition(positions pos) {
-        switch (pos) {
-            case START:
-                return new Pose2D(36, 72+trackwidth/2/2.54+1, 0);
-            case BUCKET:
-                return new Pose2D(60, 60, Math.PI/4);
-            case LEFT_SAMPLE:
-                return new Pose2D(63, 33, -Math.PI/4);
-            case SUBMERSIBLE:
-                return new Pose2D(36, 12, -Math.PI);
-            case RIGHT_SAMPLE:
-                return new Pose2D(48, 36, -Math.PI/2);
-            case MIDDLE_SAMPLE:
-                return new Pose2D(60, 36, -Math.PI/2);
-        }
-
-        return new Pose2D(-1000, -1000, 0);
-    }
-
-    public double getTargetRotation(rotations rot) {
-        switch (rot) {
-            case IDLE:
-                return 0.0;
-            case SAMPLES:
-                return 65.0;
-            case SPECIMEN:
-                return 70.0;
-        }
-        return 0.0;
-    }
-
-    public double getTargetExtension(extensions ext) {
-        switch (ext) {
-            case IDLE:
-                return 0.0;
-            case SPECIMEN:
-                return 0.3;
-            case SAMPLES:
-                return 0.85;
-        }
-        return 0.0;
-    }
-
-    public double getIntakePosition(intake_positions pos) {
-        switch (pos) {
-            case IDLE:
-                return 0.0;
-            case BUCKET:
-                return 1.0;
-            case SPECIMEN:
-                return 0.5;
-            case GROUND:
-                return 0.75;
-        }
-        return 0.0;
     }
 
     public void setIntakePosition(intake_positions pos) {

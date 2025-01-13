@@ -32,9 +32,9 @@ public class Localizer {
     private final double rt2 = Math.sqrt(2);
 
     private final double TICKS_PER_ROTATION = 2000;
-    private final double WHEEL_CIRCUMFERENCE = 4.8 * PI;
+    private final double WHEEL_CIRCUMFERENCE = 4.8 * 2.54 * PI;
 
-    private final double TICKS_PER_CM = TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
+    private final double TICKS_PER_INCH = TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
 
     public static double X_MULTIPLIER = 1;
     public static double Y_MULTIPLIER = 1;
@@ -43,12 +43,9 @@ public class Localizer {
 
     private double gx, gy, heading = 0;
 
-    private final Encoder F, L;
-    private final Encoder[] encoders;
-
-    private double[] prev_encoders = {0, 0};
-    private double[] curr_encoders = {0, 0};
-    private double[] deltas = {0, 0};
+    Encoder X, Y;
+    double old_X = 0, old_Y = 0;
+    double dX = 0, dY = 0;
 
     public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
 
@@ -62,13 +59,11 @@ public class Localizer {
 
         telemetry = t;
 
-        F = new Encoder(hardwareMap.get(DcMotorEx.class, "fl"));
-        L = new Encoder(hardwareMap.get(DcMotorEx.class, "fr"));
+        X = new Encoder(hardwareMap.get(DcMotorEx.class, "fl"));
+        Y = new Encoder(hardwareMap.get(DcMotorEx.class, "fr"));
 
-        F.setDirection(Encoder.Direction.REVERSE);
-        L.setDirection(Encoder.Direction.REVERSE);
-
-        encoders = new Encoder[]{F, L};
+        X.setDirection(Encoder.Direction.REVERSE);
+        Y.setDirection(Encoder.Direction.REVERSE);
 
         imu = hardwareMap.get(IMU.class, "imu");
 
@@ -105,28 +100,24 @@ public class Localizer {
         current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
 
-        for (int i = 0; i < encoders.length; i++) {
-            curr_encoders[i] = encoders[i].getCurrentPosition();
-            deltas[i] = curr_encoders[i] - prev_encoders[i];
-        }
+        double x = X.getCurrentPosition();
+        dX = x - old_X;
+        old_X = x;
+        double y = Y.getCurrentPosition();
+        dY = y - old_Y;
+        old_Y = y;
 
-        if (Math.abs(d_heading) < 1e-3) {
-            linearOdometry();
-        } else {
-            linearOdometry();
-        }
+        poseExponential();
 
         previous_time = current_time;
         prev_heading = heading;
-
-        System.arraycopy(curr_encoders, 0, prev_encoders, 0, encoders.length);
 
     }
 
     public void linearOdometry() {
 
-        double dfwd = deltas[0] / TICKS_PER_CM;
-        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
+        double dfwd = dX / TICKS_PER_INCH;
+        double dstr = dY / TICKS_PER_INCH - Bx * d_heading;
 
         double dx = dfwd * Math.cos(d_heading) - dstr * Math.sin(d_heading);
         double dy = dfwd * Math.sin(d_heading) + dstr * Math.cos(d_heading);
@@ -140,8 +131,8 @@ public class Localizer {
 
     public void arcOdometry() {
 
-        double dfwd = deltas[0] / TICKS_PER_CM;
-        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
+        double dfwd = dX / TICKS_PER_INCH;
+        double dstr = dY / TICKS_PER_INCH - Bx * d_heading;
 
         double r0 = dfwd/d_heading;
         double r1 = dstr/d_heading;
@@ -155,8 +146,8 @@ public class Localizer {
 
     public void poseExponential() {
 
-        double dfwd = deltas[0] / TICKS_PER_CM;
-        double dstr = deltas[1] / TICKS_PER_CM - Bx * d_heading;
+        double dfwd = dX / TICKS_PER_INCH;
+        double dstr = dY / TICKS_PER_INCH - Bx * d_heading;
 
         double dx;
         double dy;
@@ -222,7 +213,7 @@ public class Localizer {
     }
 
     public double[] getDeltas() {
-        return deltas;
+        return new double[]{dX, dY};
     }
 
 }

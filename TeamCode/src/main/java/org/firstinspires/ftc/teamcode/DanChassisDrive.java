@@ -5,7 +5,7 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kgl;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kl;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_CM;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 
 import com.acmerobotics.dashboard.FtcDashboard;
@@ -136,7 +136,7 @@ public class DanChassisDrive extends LinearOpMode {
 //            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
             double MAX_EXTENSION = current_arm_position_index == 0 ? 47 : BASE_MAX_EXTENSION;
 
-            double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_CM);
+            double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
             double arm_extension_percentage = arm_extension / MAX_EXTENSION;
 
             double min_extend_power = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));

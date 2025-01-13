@@ -10,13 +10,13 @@ public class DanDriveConstants {
     public static double WHEEL_DIAMETER = 9.6;
     public static double WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * Math.PI;
 
-    public static double MAX_VELOCITY_RPS = 5.2 * 0.9;
-    public static double MAX_ACCELERATION_RPS = MAX_VELOCITY_RPS / 2;
+    public static double MAX_VELOCITY_RPS = 5.1;
+    public static double MAX_ACCELERATION_RPS = MAX_VELOCITY_RPS * .75;
 
     public static double GEAR_RATIO = 1.0;
 
     public static double MAX_VELOCITY = MAX_VELOCITY_RPS * GEAR_RATIO * WHEEL_CIRCUMFERENCE; // / Math.sqrt(2);
-    public static double MAX_ACCELERATION = MAX_VELOCITY / 2;
+    public static double MAX_ACCELERATION = MAX_VELOCITY * .75;
 
     public static double trackwidth = (12 + 3.0/8)*2.54;
     public static double wheelbase = (11 + 7.0/8)*2.54;
@@ -31,7 +31,7 @@ public class DanDriveConstants {
     public static double INIT_ANGLE = 0.6;
 
     public static double TICKS_PER_ROTATION = 3895.9; // 3895.9 / 1.0 = x ticks / y rotations
-    public static double TICKS_PER_CM = 384.5 / 12.0; // 384.5 / 12.0 = x ticks / y cm
+    public static double TICKS_PER_INCH = 384.5 / (12.0/2.54); // 384.5 / 12.0 = x ticks / y cm
 
     public static double BASE_MAX_EXTENSION = 97.0;
 

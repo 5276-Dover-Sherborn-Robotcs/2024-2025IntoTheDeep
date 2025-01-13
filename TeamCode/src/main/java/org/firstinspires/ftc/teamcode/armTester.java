@@ -1,6 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_CM;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 
 import android.annotation.SuppressLint;
@@ -81,7 +81,7 @@ public class armTester extends LinearOpMode {
 
             packet.put("Arm Rotation", String.format("Position: %d || Rotation: %.3f", arm_rot.getCurrentPosition(), arm_rot.getCurrentPosition()/TICKS_PER_ROTATION*360));
             double arm_pos = (left_extend.getCurrentPosition() + right_extend.getCurrentPosition())/2.0;
-            packet.put("Arm Extension", String.format("Average: %.3f || Length: %.3f", arm_pos, arm_pos/TICKS_PER_CM));
+            packet.put("Arm Extension", String.format("Average: %.3f || Length: %.3f", arm_pos, arm_pos/ TICKS_PER_INCH));
             packet.put("P", pidf.p);
             packet.put("I", pidf.i);
             packet.put("D", pidf.d);
@@ -104,7 +104,7 @@ public class armTester extends LinearOpMode {
 
             while (arm_rot.isBusy()) {
                 double arm_pos = (left_extend.getCurrentPosition() + right_extend.getCurrentPosition())/2.0;
-                telemetry.addData("Arm Extension", String.format("Average: %.3f || Length: %.3f", arm_pos, arm_pos/TICKS_PER_CM));
+                telemetry.addData("Arm Extension", String.format("Average: %.3f || Length: %.3f", arm_pos, arm_pos/ TICKS_PER_INCH));
                 telemetry.update();
             }
 
