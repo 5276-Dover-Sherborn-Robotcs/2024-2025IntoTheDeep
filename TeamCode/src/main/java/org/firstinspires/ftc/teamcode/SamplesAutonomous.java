@@ -12,6 +12,7 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.qualcomm.hardware.rev.RevColorSensorV3;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -20,17 +21,18 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
 
 @Config
-@Autonomous(name="Blue Side Samples")
-public class BlueSideSamples extends LinearOpMode {
+@Autonomous(name="Samples Autonomous")
+public class SamplesAutonomous extends LinearOpMode {
 
     /*
-        TODO: Maybe wrap stuff like the arm angle, the drive train, the intakes, all in a seperate class and call an update() method?
+        TODO: Maybe wrap stuff like the arm angle, the drive train, the intakes, all in a separate class and call an update() method?
      */
 
 
@@ -38,18 +40,14 @@ public class BlueSideSamples extends LinearOpMode {
 
     Servo intake_left, intake_right, intake_pitch, intake_roll;
 
-//    RevColorSensorV3 colorSensor;
+    RevColorSensorV3 colorSensor;
 
-
-    public int count = 0;
-
-    public double LATERAL_MULTIPLIER = 1.1;
-
+    public double LATERAL_MULTIPLIER = 1.0;
 
     // PID Control constants to account for any error in position
-    public static double MAX_FORWARD_SPEED = 0.4;
-    public static double MAX_STRAFE_SPEED = 0.4;
-    public static double MAX_ANG_SPEED = 0.3;
+    public static double MAX_FORWARD_GAIN = 0.4;
+    public static double MAX_STRAFE_GAIN = 0.4;
+    public static double MAX_ANG_GAIN = 0.3;
 
     public static double FORWARD_GAIN = 0.05, Xi = 0.001; // 30% power at 50 inches error
     public static double STRAFE_GAIN = 0.05, Yi = 0.001;
@@ -216,19 +214,18 @@ public class BlueSideSamples extends LinearOpMode {
 //        intake_roll.setDirection(Servo.Direction.FORWARD);
 //        intake_roll.setPosition(0);
 
-        // Color sensor will be added, the autonomous sorta relies on it to actually work. It's possible to do without, but not recommended.
-//        colorSensor = hardwareMap.get(RevColorSensorV3.class, "colorSensor");
-//        while (!colorSensor.initialize()) {
-//            telemetry.addLine("Starting color sensor");
-//            telemetry.update();
-//        }
-//        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+//         Color sensor will be added, the autonomous sorta relies on it to actually work. It's possible to do without, but not recommended.
+        colorSensor = hardwareMap.get(RevColorSensorV3.class, "color");
+        while (!colorSensor.initialize()) {
+            telemetry.addLine("Starting color sensor");
+            telemetry.update();
+        }
+        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
 
         // Localizer
         localizer = new Localizer(hardwareMap, telemetry);
 
-
-        // Here, we iterate through each positoin we want to move to,
+        // Here, we iterate through each position we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
         Pose2D current_pose = positions.START.pose;
 
@@ -249,6 +246,8 @@ public class BlueSideSamples extends LinearOpMode {
         waitForStart();
 
         while (!isStopRequested()) {
+
+            update_things();
 
             intake = 0.5;
 
@@ -292,17 +291,16 @@ public class BlueSideSamples extends LinearOpMode {
 
                 case GRABBING:
 
-                    setIntakePosition(intake_positions.GROUND);
+                    intake_position = intake_positions.GROUND;
 
 //                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
                     if (!we_have_a_scoring_element) {
                         left_extend.setPower(0.1);
                         right_extend.setPower(0.1);
                         intake = 1;
-                        we_have_a_scoring_element = arm_extension > 10;
-//                        we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
+                        we_have_a_scoring_element = checkForSample();
                     } else {
-                        setIntakePosition(intake_positions.IDLE);
+                        intake_position = intake_positions.IDLE;
 
                         state = states.MOVING;
                         target_position_index++;
@@ -316,7 +314,8 @@ public class BlueSideSamples extends LinearOpMode {
                     if (we_have_a_scoring_element) {
                         if (target_extension == extensions.SAMPLES) {
                             if (extend_error < 3) {
-                                intake = 0.0;
+                                intake = 0.0; // might change
+                                we_have_a_scoring_element = checkForSample();
                             } else if (extend_error < 10) {
                                 setIntakePosition(intake_positions.BUCKET);
                             }
@@ -325,55 +324,20 @@ public class BlueSideSamples extends LinearOpMode {
                         }
                     } else {
                         if (target_extension == extensions.SAMPLES) {
-                            if (extend_error < 3) {
-                                setIntakePosition(intake_positions.IDLE);
+                            if (intake_position == intake_positions.BUCKET) {
+                                intake_position = intake_positions.IDLE;
+                            } else if (intake_error < 0.5) { //fill this later
+                                target_extension = extensions.IDLE;
                             }
+                        } else if (extend_error < 5) {
+                            target_rotation = rotations.IDLE;
+
+                            state = states.MOVING;
+                            target_position_index++;
                         }
                     }
 
-
-
-
-                    switch (target_extension) {
-                        case IDLE:
-                            if (we_have_a_scoring_element) {
-                                if (rotate_error < 3) target_extension = extensions.SAMPLES;
-                            } else {
-                                if (extend_error < 5) target_rotation = rotations.IDLE;
-                            }
-                            break;
-                        case SAMPLES:
-                            if (we_have_a_scoring_element) {
-                                if (extend_error < 10) setIntakePosition(intake_positions.BUCKET);
-                                if (extend_error < 5) {
-                                    intake = 0.0;
-                                }
-                            } else {
-                                setIntakePosition(intake_positions.IDLE);
-                                target_extension = extensions.IDLE;
-                            }
-                    }
-
-                    if (target_extension == extensions.IDLE && rotate_error < 3) {
-                        target_extension = extensions.SAMPLES;
-
-                    } else if (extend_error < 10) setIntakePosition(intake_positions.BUCKET);
-
-//                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
-                    if (extend_error < 5 && we_have_a_scoring_element) {
-                        intake = 0.0;
-                    } else {
-                        setIntakePosition(intake_positions.IDLE);
-                        target_extension = extensions.IDLE;
-
-                        if (extend_error < 10) target_rotation = rotations.IDLE;
-                        if (rotate_error < 5) state = states.MOVING;
-
-                    }
-
             }
-
-            update_things();
 
         }
 
@@ -433,9 +397,9 @@ public class BlueSideSamples extends LinearOpMode {
         h_sum += error_heading;
 
         // P gains
-        double forward = Range.clip(error_x * FORWARD_GAIN, -MAX_FORWARD_SPEED, MAX_FORWARD_SPEED);
-        double strafe = Range.clip(error_y * STRAFE_GAIN, -MAX_STRAFE_SPEED, MAX_STRAFE_SPEED);
-        double turn = Range.clip(error_heading * ANG_GAIN, -MAX_ANG_SPEED, MAX_ANG_SPEED);
+        double forward = Range.clip(error_x * FORWARD_GAIN, -MAX_FORWARD_GAIN, MAX_FORWARD_GAIN);
+        double strafe = Range.clip(error_y * STRAFE_GAIN, -MAX_STRAFE_GAIN, MAX_STRAFE_GAIN);
+        double turn = Range.clip(error_heading * ANG_GAIN, -MAX_ANG_GAIN, MAX_ANG_GAIN);
 
         // I gain
         forward += x_sum * Xi;
@@ -524,6 +488,15 @@ public class BlueSideSamples extends LinearOpMode {
     public void setIntakePosition(intake_positions pos) {
 
         // TODO: Implementation for the intake
+
+    }
+
+    public boolean checkForSample() {
+
+        double green_red = (double) colorSensor.green() / colorSensor.red();
+        double green_blue = (double) colorSensor.green() / colorSensor.blue();
+
+        return colorSensor.getDistance(DistanceUnit.CM) < 2.5 && Math.abs(green_red - 4.2) < .25 && Math.abs(green_blue - 1.2) < .25;
 
     }
 

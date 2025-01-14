@@ -20,6 +20,8 @@ public class MaxSpinTuner extends LinearOpMode {
     double prev_heading = 0;
     double prev_vh = 0;
 
+    double their_prev_vh = 0;
+
     double direction = 1;
     double max_vel = 0;
     double max_accel = 0;
@@ -70,6 +72,8 @@ public class MaxSpinTuner extends LinearOpMode {
 
         while (opModeIsActive()) {
 
+            if (accel_multiplier > 4) break;
+
             double time = clock.seconds() - start_time;
             double dt = time - prev_time;
 
@@ -89,6 +93,7 @@ public class MaxSpinTuner extends LinearOpMode {
 
             } else if (time <= 2*time_to_accel + 2.5){
 
+                power = 0;
                 direction = -direction;
                 start_time = clock.seconds();
                 accel_multiplier += 0.1;
@@ -122,6 +127,9 @@ public class MaxSpinTuner extends LinearOpMode {
         double vh = dh / dt;
         double ah = (vh-prev_vh)/dt*direction;
 
+        double their_vh = imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate;
+        double their_ah = (their_vh - their_prev_vh) / dt;
+
         max_vel = Math.max(max_vel, vh);
         max_accel = Math.max(max_accel, ah);
 
@@ -130,10 +138,12 @@ public class MaxSpinTuner extends LinearOpMode {
         telemetry.addData("Max Velocity", max_vel);
         telemetry.addData("Max Acceleration", max_accel);
         telemetry.addData("Their Velocity", imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate);
+        telemetry.addData("Their Acceleration", their_ah);
         telemetry.update();
 
         prev_heading = heading;
         prev_vh = vh;
+        their_prev_vh = their_vh;
 
     }
 }
