@@ -53,8 +53,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public Pose2D startPose;
 
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
-    public boolean we_have_a_scoring_element = false;
-
+    public boolean we_have_a_scoring_element = false;;
 
     // These are intake positions. They assume that we have servo for pitch and a servo for roll. All numbers are on a scale of 0.0 to 1.0
     public enum Intake_Position {
@@ -98,7 +97,7 @@ public abstract class AutonomousOpMode extends OpMode {
         public Pose2D pose = new Pose2D(0, 0, 0);
     }
     // The order of positions the robot wants to be at
-    public Position[] target_positions;
+    public Position[] target_positions = null;
     public int target_position_index = 0;
     public double x_sum = 0;
     public double y_sum = 0; // some pid control
@@ -133,8 +132,12 @@ public abstract class AutonomousOpMode extends OpMode {
     NanoClock clock = NanoClock.system();
     double path_init_time = 0;
 
+    abstract public void variable_init();
+
     @Override
     public void init() {
+
+        variable_init();
 
         assert (target_rotation != null);
         assert (target_extension != null);
