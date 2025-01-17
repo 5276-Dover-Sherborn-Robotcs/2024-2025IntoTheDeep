@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode;
 
-
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
@@ -13,11 +12,10 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
 import com.acmerobotics.dashboard.FtcDashboard;
-import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.acmerobotics.roadrunner.util.NanoClock;
 import com.qualcomm.hardware.rev.RevColorSensorV3;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
@@ -31,14 +29,9 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
 
-@Config
-@Autonomous(name="Samples Autonomous")
-public class SamplesAutonomous extends LinearOpMode {
+public abstract class AutonomousOpMode extends OpMode {
 
-    /*
-        TODO: Maybe wrap stuff like the arm angle, the drive train, the intakes, all in a separate class and call an update() method?
-     */
-
+    abstract public void mainLoop();
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
@@ -57,13 +50,14 @@ public class SamplesAutonomous extends LinearOpMode {
     public static double STRAFE_GAIN = 0.05, Yi = 0.001;
     public static double ANG_GAIN = 0.5/(Math.PI/2), Hi = 0.02;
 
+    public Pose2D startPose;
 
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
 
 
     // These are intake positions. They assume that we have servo for pitch and a servo for roll. All numbers are on a scale of 0.0 to 1.0
-    public enum intake_positions {
+    public enum Intake_Position {
         IDLE(0.0, 0.0),
         BUCKET(1.0, 1.0),
         GROUND(0.0, 0.75),
@@ -72,71 +66,39 @@ public class SamplesAutonomous extends LinearOpMode {
         public final double roll;
         public final double pitch;
 
-        intake_positions(double roll, double pitch) {
+        Intake_Position(double roll, double pitch) {
             this.roll = roll;
             this.pitch = pitch;
         }
     }
-    public intake_positions intake_position = intake_positions.IDLE;
+    public Intake_Position intake_position = Intake_Position.IDLE;
     public double intake = 0.5; // This is the current power of the intake servos. 0.5 is not moving, 0.0 is one way, 1.0 is the other
 
     // Rotation positions, mostly just for a level of abstraction. Following that are a couple pid used things
-    public enum rotations {
-        IDLE(0),
-        SAMPLES(65),
-        SPECIMEN(75);
-
-        public final double rotation;
-
-        rotations(double rotation) {this.rotation = rotation;}
+    public interface Rotation {
+        public double rotation = 0.0;
     }
-    public rotations target_rotation = rotations.IDLE;
+    public Rotation target_rotation = null;
     public double min_rotation_power = 0.0;
-    public double rotation_sum = 0;
-    public double prev_rotation_error = 0;
+    public double prev_rotation_error = 0, rotation_sum = 0;
     PIDFCoefficients rotation_pidg = new PIDFCoefficients(
             .7/45, 0.0, 0.0, Kg
     );
 
     //Extension positions, in inches
-    public enum extensions {
-        IDLE(0),
-        SAMPLES(47),
-        SPECIMEN(25);
-
-        public final double extension;
-
-        extensions(double extension) {this.extension = extension;}
-
+    public interface Extension {
+        public double extension = 0.0;
     }
-    public extensions target_extension = extensions.IDLE;
+    public Extension target_extension = null;
     public double min_extension_power = 0.0;
     public double extension_sum = 0;
 
     // Positions the robot wants to be at
-    public enum positions {
-        START(new Pose2D(36, 72+trackwidth/2/2.54+1, 0)),
-        BUCKET(new Pose2D(60, 60, Math.PI/4)),
-        LEFT_SAMPLE(new Pose2D(63, 33, -Math.PI/4)),
-        SUBMERSIBLE(new Pose2D(36, 12, -Math.PI)),
-        RIGHT_SAMPLE(new Pose2D(48, 36, -Math.PI/2)),
-        MIDDLE_SAMPLE(new Pose2D(60, 36, -Math.PI/2));
-
-        public final Pose2D pose;
-
-        positions(Pose2D pose) {this.pose = pose;}
+    public interface Position {
+        public Pose2D pose = new Pose2D(0, 0, 0);
     }
-    // The order of positions the robot wants to move to
-    public positions[] target_positions = {
-            positions.BUCKET,
-            positions.RIGHT_SAMPLE,
-            positions.BUCKET,
-            positions.MIDDLE_SAMPLE,
-            positions.BUCKET,
-            positions.LEFT_SAMPLE,
-            positions.BUCKET,
-            positions.SUBMERSIBLE
-    };
+    // The order of positions the robot wants to be at
+    public Position[] target_positions;
     public int target_position_index = 0;
     public double x_sum = 0;
     public double y_sum = 0; // some pid control
@@ -168,9 +130,15 @@ public class SamplesAutonomous extends LinearOpMode {
     public double extend_error;
     public double intake_error;
 
+    NanoClock clock = NanoClock.system();
+    double path_init_time = 0;
 
     @Override
-    public void runOpMode() {
+    public void init() {
+
+        assert (target_rotation != null);
+        assert (target_extension != null);
+        assert (target_positions != null);
 
         // Multiple telemetry, honestly doesn't quite matter.
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
@@ -213,7 +181,7 @@ public class SamplesAutonomous extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // Right now we only have an servo for pitch, hopefully we end up with one for roll as well.
+        // Right now we only have an servo for pitch, hopefully we end up with one for roll as well. and maybe a 2nd pitch??
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
 //        intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
@@ -222,7 +190,6 @@ public class SamplesAutonomous extends LinearOpMode {
 //        intake_roll.setDirection(Servo.Direction.FORWARD);
 //        intake_roll.setPosition(0);
 
-//         Color sensor will be added, the autonomous sorta relies on it to actually work. It's possible to do without, but not recommended.
         colorSensor = hardwareMap.get(RevColorSensorV3.class, "color");
         while (!colorSensor.initialize()) {
             telemetry.addLine("Starting color sensor");
@@ -233,11 +200,13 @@ public class SamplesAutonomous extends LinearOpMode {
         // Localizer
         localizer = new Localizer(hardwareMap, telemetry);
 
+        double t0 = clock.seconds();
+
         // Here, we iterate through each position we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
-        Pose2D current_pose = positions.START.pose;
+        Pose2D current_pose = startPose;
 
-        for (positions pos : target_positions) {
+        for (Position pos : target_positions) {
             Pose2D target_pose = pos.pose;
             temp_path.add(
                     new DualLinearMotionProfile(
@@ -251,105 +220,30 @@ public class SamplesAutonomous extends LinearOpMode {
 
         path = temp_path.toArray(new DualLinearMotionProfile[0]);
 
-        waitForStart();
-
-        while (!isStopRequested()) {
-
-            update_things();
-
-            intake = 0.5;
-
-            switch (state) {
-                case IDLE:
-                    idle();
-                case MOVING:
-                    double poseDistance = target_positions[target_position_index].pose.dist(poseEstimate);
-
-                    if (poseDistance < 5) {
-                        switch (target_positions[target_position_index]) {
-                            case BUCKET:
-                                target_rotation = rotations.SAMPLES;
-                            case LEFT_SAMPLE:
-                            case MIDDLE_SAMPLE:
-                            case RIGHT_SAMPLE:
-                                setIntakePosition(intake_positions.GROUND);
-
-                        }
-                    }
-
-                    if (profile_done) {
-                        switch (target_positions[target_position_index]) {
-                            case BUCKET:
-                                state = states.DEPOSITING;
-                                break;
-                            case LEFT_SAMPLE:
-                            case RIGHT_SAMPLE:
-                            case MIDDLE_SAMPLE:
-                                state = states.GRABBING;
-                                break;
-                            case SUBMERSIBLE:
-                                state = states.IDLE;
-                                break;
-                            case START:
-                                state = states.MOVING;
-                        }
-                    }
-                    break;
-
-                case GRABBING:
-
-                    intake_position = intake_positions.GROUND;
-
-//                    we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
-                    if (!we_have_a_scoring_element) {
-                        left_extend.setPower(0.1);
-                        right_extend.setPower(0.1);
-                        intake = 1;
-                        we_have_a_scoring_element = checkForSample();
-                    } else {
-                        intake_position = intake_positions.IDLE;
-
-                        state = states.MOVING;
-                        target_position_index++;
-                    }
-                    break;
-
-                case DEPOSITING:
-
-                    // TODO: make this better
-
-                    if (we_have_a_scoring_element) {
-                        if (target_extension == extensions.SAMPLES) {
-                            if (extend_error < 3) {
-                                intake = 0.0; // might change
-                                we_have_a_scoring_element = checkForSample();
-                            } else if (extend_error < 10) {
-                                setIntakePosition(intake_positions.BUCKET);
-                            }
-                        } else if (rotate_error < 3 && target_rotation == rotations.SAMPLES) {
-                            target_extension = extensions.SAMPLES;
-                        }
-                    } else {
-                        if (target_extension == extensions.SAMPLES) {
-                            if (intake_position == intake_positions.BUCKET) {
-                                intake_position = intake_positions.IDLE;
-                            } else if (intake_error < 0.5) { //fill this later
-                                target_extension = extensions.IDLE;
-                            }
-                        } else if (extend_error < 5) {
-                            target_rotation = rotations.IDLE;
-
-                            state = states.MOVING;
-                            target_position_index++;
-                        }
-                    }
-
-            }
-
-        }
+        path_init_time = clock.seconds()-t0;
 
     }
-    // Movement feedforward and PID control
+
+    @Override
+    public void init_loop() {
+
+        telemetry.addData("Time to path init", path_init_time);
+        telemetry.addLine("Ready");
+
+        telemetry.update();
+
+    }
+
+    @Override
+    public void loop() {
+
+        intake = 0.5;
+
+        mainLoop();
+
+        update_things();
+
+    }
 
     public void update_things() {
 
@@ -522,7 +416,7 @@ public class SamplesAutonomous extends LinearOpMode {
 
     }
 
-    public void setIntakePosition(intake_positions pos) {
+    public void setIntakePosition(Intake_Position pos) {
 
         // TODO: Implementation for the intake
 
@@ -537,4 +431,11 @@ public class SamplesAutonomous extends LinearOpMode {
 
     }
 
+
+    // stole it from linear op mode lol
+    public final void idle() {
+        // Otherwise, yield back our thread scheduling quantum and give other threads at
+        // our priority level a chance to run
+        Thread.yield();
+    }
 }
