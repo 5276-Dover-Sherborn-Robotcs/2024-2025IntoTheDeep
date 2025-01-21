@@ -12,10 +12,9 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.teamcode.trajectories.LinearMotionProfile;
+import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
 import org.firstinspires.ftc.teamcode.trajectories.MotionProfile;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
@@ -50,22 +49,20 @@ public class motionProfileTest extends LinearOpMode {
 
         localizer = new Localizer(hardwareMap, telemetry);
 
-        motionProfile = new LinearMotionProfile(
+        motionProfile = new DualLinearMotionProfile(
                 new Pose2D(0, 0, 0),
-                new Pose2D(24*2.54, 24*2.54, 0),
+                new Pose2D(24, 24, 0),
                 telemetry);
 
-        IMU imu = localizer.imu;
+        fl = hardwareMap.get(DcMotorEx.class, "fl");
+        fr = hardwareMap.get(DcMotorEx.class, "fr");
+        bl = hardwareMap.get(DcMotorEx.class, "bl");
+        br = hardwareMap.get(DcMotorEx.class, "br");
 
-        fl = hardwareMap.get(DcMotorEx.class, "m1");
-        fr = hardwareMap.get(DcMotorEx.class, "m2");
-        bl = hardwareMap.get(DcMotorEx.class, "m3");
-        br = hardwareMap.get(DcMotorEx.class, "m4");
-
-        fl.setDirection(DcMotorSimple.Direction.FORWARD);
-        fr.setDirection(DcMotorSimple.Direction.REVERSE);
-        bl.setDirection(DcMotorSimple.Direction.FORWARD);
-        br.setDirection(DcMotorSimple.Direction.REVERSE);
+        fl.setDirection(DcMotorSimple.Direction.REVERSE);
+        fr.setDirection(DcMotorSimple.Direction.FORWARD);
+        bl.setDirection(DcMotorSimple.Direction.REVERSE);
+        br.setDirection(DcMotorSimple.Direction.FORWARD);
 
         fl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         fl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
@@ -75,6 +72,8 @@ public class motionProfileTest extends LinearOpMode {
         bl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         br.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         br.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+
+        motors = new DcMotorEx[]{fl, fr, bl, br};
 
         while (opModeInInit()) {
             telemetry.addLine("Localizer ready");
@@ -145,8 +144,9 @@ public class motionProfileTest extends LinearOpMode {
 
                     break;
                 case RUNNING:
-                    Pose2D vel = motionProfile.traj_vel_time();
-                    Pose2D accel = motionProfile.traj_acc_time();
+                    Pose2D[] time = motionProfile.get_time();
+                    Pose2D vel = time[1];
+                    Pose2D accel = time[2];
 
                     double x = Kv * vel.x + Ka * accel.x;
                     double y = Kv * vel.y + Ka * accel.y;
@@ -158,10 +158,6 @@ public class motionProfileTest extends LinearOpMode {
                     outputs[1] = x + y + w;
                     outputs[2] = x + y - w;
                     outputs[3] = x - y + w;
-//                    outputs[0] = x;
-//                    outputs[1] = y;
-//                    outputs[2] = y;
-//                    outputs[3] = x;
 
                     for (int i = 0; i < 4; i++) {
                         motors[i].setPower(outputs[i]);
@@ -187,26 +183,6 @@ public class motionProfileTest extends LinearOpMode {
                     state = STATE.IDLE;
                     break;
             }
-
-            telemetry.update();
-
-//            double[] target_robot_velocity = {0, 0, 0};
-//
-//            // TODO: implement motion profiling or some sort of control loop here
-//
-//            double[] target_motor_velocity = {0, 0, 0, 0};
-//            target_motor_velocity[0] = (target_robot_velocity[0] - target_robot_velocity[1] - (l + b) * target_robot_velocity[2]) / 48;
-//            target_motor_velocity[1] = (target_robot_velocity[0] + target_robot_velocity[1] - (l + b) * target_robot_velocity[2]) / 48;
-//            target_motor_velocity[2] = (target_robot_velocity[0] - target_robot_velocity[1] + (l + b) * target_robot_velocity[2]) / 48;
-//            target_motor_velocity[3] = (target_robot_velocity[0] + target_robot_velocity[1] + (l + b) * target_robot_velocity[2]) / 48;
-//
-//            for (int i = 0; i < 4; i++) {
-//
-//                double target_power = target_motor_velocity[i] * 20 / 6000;
-//
-//                motors[i].setPower(target_power);
-//
-//            }
 
             telemetry.update();
 

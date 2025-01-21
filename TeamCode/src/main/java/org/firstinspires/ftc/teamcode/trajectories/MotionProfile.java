@@ -2,20 +2,24 @@ package org.firstinspires.ftc.teamcode.trajectories;
 
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
-public abstract class MotionProfile {
+public interface MotionProfile {
 
-    public abstract void telemetrize();
+     void telemetrize();
 
-    public enum TrajectoryCase {
+    enum TrajectoryCase {
         NORMAL,
-        DEGENERATE
+        DEGENERATE,
+        ITS_COMPLICATED
     }
 
-    public TrajectoryCase state = TrajectoryCase.NORMAL;
-    public abstract void start();
-    public abstract void end();
-    public abstract Pose2D traj_pos_time();
-    public abstract Pose2D traj_vel_time();
-    public abstract Pose2D traj_acc_time();
-    public abstract boolean is_traj_done();
+    double[][] getTrajectory();
+    void start();
+    void end();
+    Pose2D[] get_time();
+    Pose2D traj_pos_time();
+    Pose2D traj_vel_time();
+    Pose2D traj_acc_time();
+    boolean is_traj_done();
+
+
 }

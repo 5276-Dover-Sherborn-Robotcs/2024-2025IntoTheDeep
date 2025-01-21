@@ -114,7 +114,7 @@ public class DanChassisDrive extends LinearOpMode {
         left.setDirection(Servo.Direction.FORWARD);
         right = hardwareMap.get(Servo.class, "right");
         right.setDirection(Servo.Direction.REVERSE);
-        in_rot = hardwareMap.get(Servo.class, "in");
+        in_rot = hardwareMap.get(Servo.class, "intake_pitch");
         in_rot.setDirection(Servo.Direction.FORWARD);
         in_rot.setPosition(0.9);
 

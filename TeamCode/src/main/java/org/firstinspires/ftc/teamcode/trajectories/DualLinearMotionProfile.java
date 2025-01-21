@@ -16,7 +16,7 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
 
-public class DualLinearMotionProfile extends MotionProfile {
+public class DualLinearMotionProfile implements MotionProfile {
 
     double pi = Math.PI;
     double lx = wheelbase / 2;
@@ -39,12 +39,20 @@ public class DualLinearMotionProfile extends MotionProfile {
     boolean swapped = false;
 
     public DualMotionSegment[] trajectory = {};
+    public double[][] trajectory2 = {};
+
+    public double[][] getTrajectory() {
+        return trajectory2;
+    }
 
     public int currentSegment = 0;
     public ElapsedTime timer;
+    public double startTime;
     public double t0;
 
     Telemetry telemetry;
+
+    TrajectoryCase state = TrajectoryCase.ITS_COMPLICATED;
 
     public static boolean isTrajNormal(double d, double vmax, double amax) {
         return (vmax / amax) < (d / vmax);
@@ -53,7 +61,7 @@ public class DualLinearMotionProfile extends MotionProfile {
     void add_period(ArrayList<double[]> periods, double x_mult, double r_mult, double dt) {
         if (dt != 0) {
             if (swapped) {
-                periods.add(new double[]{MAX_ROTATIONAL_ACCELERATION * r_mult * h_direction, MAX_ACCELERATION * x_mult * x_direction, dt});
+                periods.add(new double[]{MAX_ACCELERATION * r_mult * x_direction, MAX_ROTATIONAL_ACCELERATION * x_mult * h_direction, dt});
             } else {
                 periods.add(new double[]{MAX_ACCELERATION * x_mult * x_direction, MAX_ROTATIONAL_ACCELERATION * r_mult * h_direction, dt});
             }
@@ -86,19 +94,29 @@ public class DualLinearMotionProfile extends MotionProfile {
 
         double dh = endPose.h - startPose.h;
 
-        double v_x_c_max = MAX_VELOCITY / 2;
-        double v_r_c_max = MAX_ROTATIONAL_VELOCITY / 2;
+        double v_x_c_max = 86.182/2.54;
+        double v_r_c_max = MAX_ROTATIONAL_ACCELERATION * (v_x_c_max/MAX_ACCELERATION);
 
         double dx_x = endPose.x - startPose.x;
         double dx_y = endPose.y - startPose.y;
         double dx = Math.hypot(dx_x, dx_y);
         theta = Math.atan2(dx_y, dx_x);
 
-        if (dx < 1e-3) dx = 0;
-        if (dh < 1e-2) dh = 0;
+        cos = Math.cos(theta);
+        sin = Math.sin(theta);
+
+        if (Math.abs(dx) < 1e-3) dx = 0;
+        if (Math.abs(dh) < 1e-2) dh = 0;
 
         h_direction = Math.signum(dh);
-        x_direction = Math.signum(dx);
+        dh = Math.abs(dh);
+        x_direction = 1;
+
+        x_normal = isTrajNormal(dx, v_x_c_max, MAX_ACCELERATION);
+        x_max_normal = isTrajNormal(dx, MAX_VELOCITY, MAX_ACCELERATION);
+        r_normal = isTrajNormal(dh, v_r_c_max, MAX_ROTATIONAL_ACCELERATION);
+        r_max_normal = isTrajNormal(dh, MAX_ROTATIONAL_VELOCITY, MAX_ROTATIONAL_ACCELERATION);
+
 
         p0 = Math.hypot(startPose.x, startPose.y);
 
@@ -181,18 +199,12 @@ public class DualLinearMotionProfile extends MotionProfile {
             double dt1 = v_r_c_max / MAX_ROTATIONAL_ACCELERATION;
             double dt2 = dh / v_r_c_max;
 
-            System.out.println(dT1 + " " + dt1);
-            System.out.println(dT2 + " " + dt2);
-
             if (dT2 < dt2) {
                 swapped = true;
                 double temp = dT2;
                 dT2 = dt2;
                 dt2 = temp;
             }
-
-            System.out.println(dT1 + " " + dt1);
-            System.out.println(dT2 + " " + dt2);
 
             add_period(periods, 1, 1, dT1);
             add_period(periods, 0, 0, dt2);
@@ -282,6 +294,7 @@ public class DualLinearMotionProfile extends MotionProfile {
         }
 
         trajectory = collection.toArray(new DualMotionSegment[periods.size()]);
+        trajectory2 = periods.toArray(new double[0][]);
         duration = t0;
 
     }
@@ -292,10 +305,12 @@ public class DualLinearMotionProfile extends MotionProfile {
 
     public void start() {
         timer = new ElapsedTime();
+        startTime = 0;
     }
 
     public Pose2D[] get_time() {
-        double time = timer.time();
+
+        double time = timer.time() - startTime;
         if (time >= duration) {
             return new Pose2D[]{
                     endPose,
@@ -303,31 +318,43 @@ public class DualLinearMotionProfile extends MotionProfile {
                     new Pose2D(0, 0, 0)
             };
         }
-        time -= t0;
         double x = Math.hypot(startPose.x, startPose.y);
-        double r = startPose.h;
+        double h = startPose.h;
         double[] v = {0, 0};
         double[] a = {0, 0};
 
-        DualMotionSegment segment = trajectory[currentSegment];
+        for (int i = 0; i < trajectory2.length; i++) {
 
-        if (time > segment.dt) {
-            t0 += segment.dt;
-            currentSegment++;
-            segment = trajectory[currentSegment];
+            double[] segment = trajectory2[i];
+
+            double dt = segment[2] - ((i > 0) ? trajectory2[i-1][2] : 0);
+
+            if (time < segment[2]) {
+
+                time -= ((i > 0) ? trajectory2[i-1][2] : 0);
+
+                x += v[0] * time + .5 * segment[0] * time * time;
+                h += v[1] * time + .5 * segment[1] * time * time;
+                v[0] += segment[0] * time;
+                v[1] += segment[1] * time;
+                a[0] = segment[0];
+                a[1] = segment[1];
+                break;
+
+            }
+            x += v[0] * dt + .5 * segment[0] * dt * dt;
+            h += v[1] * dt + .5 * segment[1] * dt * dt;
+            v[0] += segment[0] * dt;
+            v[1] += segment[1] * dt;
+            a[0] = segment[0];
+            a[1] = segment[1];
         }
 
-        time = timer.time() - t0;
-        a = segment.get_acc(time);
-        v = segment.get_vel(time);
-        double[] p = segment.get_pos(time);
-        x += p[0]; r += p[0];
-
-        double theta = this.theta - r;
+        double theta = this.theta - h;
         return new Pose2D[]{
-                new Pose2D(x * cos, x * sin, r),
-                new Pose2D(v[0] * Math.cos(theta), v[0] * Math.sin(theta), v[1]),
-                new Pose2D(a[0] * Math.cos(theta), a[0] * Math.sin(theta), a[1])
+                new Pose2D(x * cos, x * sin, h),
+                new Pose2D(v[0] * cos, v[0] * sin, v[1]),
+                new Pose2D(a[0] * cos, a[0] * sin, a[1])
         };
     }
 

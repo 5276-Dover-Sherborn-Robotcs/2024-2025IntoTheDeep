@@ -127,7 +127,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public boolean profile_done;
     public double rotate_error;
     public double extend_error;
-    public double intake_error;
+    public boolean intake_side;
 
     NanoClock clock = NanoClock.system();
     double path_init_time = 0;

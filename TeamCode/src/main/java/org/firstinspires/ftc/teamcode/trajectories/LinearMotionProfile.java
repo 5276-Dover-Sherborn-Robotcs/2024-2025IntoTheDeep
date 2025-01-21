@@ -8,7 +8,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
 
-public class LinearMotionProfile extends MotionProfile {
+public class LinearMotionProfile implements MotionProfile {
 
     public Pose2D startPose, endPose;
     public double d = 0;
@@ -21,6 +21,8 @@ public class LinearMotionProfile extends MotionProfile {
     public ElapsedTime timer;
 
     Telemetry telemetry;
+
+    TrajectoryCase state;
 
     public LinearMotionProfile(Pose2D startPose, Pose2D endPose, Telemetry telemetry) {
 
@@ -70,6 +72,36 @@ public class LinearMotionProfile extends MotionProfile {
         timer = new ElapsedTime();
     }
 
+    public double[][] getTrajectory() {
+        return new double[0][];
+    }
+
+    @Override
+    public Pose2D[] get_time() {
+
+        double time = timer.time();
+        double x0 = 0;
+        double v0 = 0;
+        double a = 0;
+        for (MotionSegment segment : trajectory) {
+            if (time < segment.dt) {
+                x0 += segment.get_pos(time);
+                v0 = segment.get_vel(time);
+                a = segment.a;
+                break;
+            }
+            time -= segment.dt;
+            x0 += segment.get_pos(segment.dt);
+        }
+
+        return new Pose2D[]{
+                new Pose2D(x0 * cos, x0 * sin, 0),
+                new Pose2D(v0 * cos, v0 * sin, 0),
+                new Pose2D(a * cos, a * sin, 0)
+        };
+
+    }
+
     public Pose2D traj_pos_time() {
         double time = timer.time();
         double x0 = 0;
@@ -96,7 +128,7 @@ public class LinearMotionProfile extends MotionProfile {
             time -= segment.dt;
         }
         telemetry.addData("Target Velocity", v0);
-        return new Pose2D(v0 * cos, v0 * sin, theta);
+        return new Pose2D(v0 * cos, v0 * sin, 0);
     }
 
     public Pose2D traj_acc_time() {
@@ -110,7 +142,7 @@ public class LinearMotionProfile extends MotionProfile {
             time -= segment.dt;
         }
         telemetry.addData("Target Acceleration", a);
-        return new Pose2D(a * cos, a * sin, theta);
+        return new Pose2D(a * cos, a * sin, 0);
     }
 
     public boolean is_traj_done() {

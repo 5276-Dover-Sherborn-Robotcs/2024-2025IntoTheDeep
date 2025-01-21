@@ -4,6 +4,7 @@ import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.roadrunner.util.NanoClock;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -12,6 +13,7 @@ import com.qualcomm.robotcore.hardware.IMU;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
+@Autonomous(name="spinner? I barely know her")
 public class MaxSpinTuner extends LinearOpMode {
 
     DcMotorEx fl, fr, bl, br;
@@ -85,18 +87,19 @@ public class MaxSpinTuner extends LinearOpMode {
 
             } else if (time <= time_to_accel + 0.5) {
 
-                power = 1;
+                power = 1*direction;
 
             } else if (time <= 2*time_to_accel + 0.5){
 
-                power = 1-((time-time_to_accel-0.5)*accel_multiplier*direction);
+                power = direction*(1-((time-time_to_accel-0.5)*accel_multiplier));
 
-            } else if (time <= 2*time_to_accel + 2.5){
+            } else if (time >= 2*time_to_accel + 2.5){
 
                 power = 0;
                 direction = -direction;
                 start_time = clock.seconds();
                 accel_multiplier += 0.1;
+                time_to_accel = 1/accel_multiplier;
 
             }
 
@@ -112,6 +115,11 @@ public class MaxSpinTuner extends LinearOpMode {
 
             prev_time = time;
 
+        }
+
+        while (opModeIsActive()) {
+
+            idle();
         }
 
     }
@@ -130,14 +138,14 @@ public class MaxSpinTuner extends LinearOpMode {
         double their_vh = imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate;
         double their_ah = (their_vh - their_prev_vh) / dt;
 
-        max_vel = Math.max(max_vel, vh);
-        max_accel = Math.max(max_accel, ah);
+        max_vel = Math.max(Math.abs(their_vh), max_vel);
+        max_accel = Math.max(Math.abs(their_ah), max_accel);
 
         telemetry.addData("Velocity", vh);
         telemetry.addData("Acceleration", ah);
         telemetry.addData("Max Velocity", max_vel);
         telemetry.addData("Max Acceleration", max_accel);
-        telemetry.addData("Their Velocity", imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate);
+        telemetry.addData("Their Velocity", their_vh);
         telemetry.addData("Their Acceleration", their_ah);
         telemetry.update();
 
