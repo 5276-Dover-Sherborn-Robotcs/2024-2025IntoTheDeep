@@ -18,8 +18,14 @@ class Pose2D(@JvmField val x: Double, @JvmField val y: Double, @JvmField val h: 
         }
     }
 
-
     // This is just a simple distance formula
     fun dist(p: Pose2D) = hypot((p.x - x), (p.y - y))
+
+    override fun hashCode(): Int {
+        var result = x.hashCode()
+        result = 31 * result + y.hashCode()
+        result = 31 * result + h.hashCode()
+        return result
+    }
 
 }

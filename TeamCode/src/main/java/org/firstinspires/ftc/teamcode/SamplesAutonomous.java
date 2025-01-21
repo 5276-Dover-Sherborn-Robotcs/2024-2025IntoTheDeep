@@ -28,7 +28,6 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
 import org.firstinspires.ftc.teamcode.util.Pose2D;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 
