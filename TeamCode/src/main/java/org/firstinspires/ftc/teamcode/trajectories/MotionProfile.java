@@ -4,8 +4,6 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 public interface MotionProfile {
 
-     void telemetrize();
-
     enum TrajectoryCase {
         NORMAL,
         DEGENERATE,
@@ -15,7 +13,7 @@ public interface MotionProfile {
     double[][] getTrajectory();
     void start();
     void end();
-    Pose2D[] get_time();
+    Pose2D[] get_state_at_time();
     Pose2D traj_pos_time();
     Pose2D traj_vel_time();
     Pose2D traj_acc_time();

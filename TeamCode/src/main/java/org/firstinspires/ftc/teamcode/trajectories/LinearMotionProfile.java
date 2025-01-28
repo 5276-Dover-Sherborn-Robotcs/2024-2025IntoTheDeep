@@ -77,7 +77,7 @@ public class LinearMotionProfile implements MotionProfile {
     }
 
     @Override
-    public Pose2D[] get_time() {
+    public Pose2D[] get_state_at_time() {
 
         double time = timer.time();
         double x0 = 0;

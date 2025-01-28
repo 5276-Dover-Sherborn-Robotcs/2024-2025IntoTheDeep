@@ -69,7 +69,7 @@ public class motionProfileGrapher extends LinearOpMode {
 
                 while (!profile.is_traj_done()) {
 
-                    Pose2D[] forward = profile.get_time();
+                    Pose2D[] forward = profile.get_state_at_time();
 
                     Pose2D position = forward[0];
                     Pose2D velocity = forward[1];

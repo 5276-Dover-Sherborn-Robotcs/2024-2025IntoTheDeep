@@ -326,7 +326,7 @@ public class SpecimenAutonomous extends LinearOpMode {
 
     public boolean movePID(DualLinearMotionProfile profile) {
         // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
-        Pose2D[] at_time = profile.get_time();
+        Pose2D[] at_time = profile.get_state_at_time();
 
         Pose2D poseTarget = at_time[0];
 

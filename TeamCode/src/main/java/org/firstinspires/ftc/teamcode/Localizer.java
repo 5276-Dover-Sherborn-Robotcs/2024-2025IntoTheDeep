@@ -32,7 +32,7 @@ public class Localizer {
     private final double rt2 = Math.sqrt(2);
 
     private final double TICKS_PER_ROTATION = 2000;
-    private final double WHEEL_CIRCUMFERENCE = 4.8 * 2.54 * PI;
+    private final double WHEEL_CIRCUMFERENCE = 4.8 / 2.54 * PI;
 
     private final double TICKS_PER_INCH = TICKS_PER_ROTATION / WHEEL_CIRCUMFERENCE;
 
@@ -41,7 +41,7 @@ public class Localizer {
 
     public double current_time, previous_time, d_time = 0;
 
-    private double gx, gy, heading = 0;
+    private double gx = 0, gy = 0, heading = 0;
 
     Encoder X, Y;
     double old_X = 0, old_Y = 0;
@@ -79,6 +79,8 @@ public class Localizer {
 
         imu.resetYaw();
         heading = 0;
+        gx = 0;
+        gy = 0;
         prev_heading = 0;
         d_heading = 0;
 
@@ -97,6 +99,10 @@ public class Localizer {
         heading += (heading < 0) ? 2*PI : 0;
         d_heading = heading - prev_heading;
 
+        if (Math.abs(d_heading) > Math.PI) {
+            d_heading = -Math.copySign(2*Math.PI - Math.abs(d_heading), d_heading);
+        }
+
         current_time = timer.time()/1000.0;
         d_time  = current_time - previous_time;
 
@@ -107,10 +113,21 @@ public class Localizer {
         dY = y - old_Y;
         old_Y = y;
 
-        poseExponential();
+        if (d_heading > 1e-2) arcOdometry();
+        else linearOdometry();
 
         previous_time = current_time;
         prev_heading = heading;
+
+    }
+
+    public void whatisturninganyways() {
+
+        double dfwd = dX / TICKS_PER_INCH;
+        double dstr = dY / TICKS_PER_INCH;
+
+        gx += (dfwd * Math.cos(prev_heading) - dstr * Math.sin(prev_heading));
+        gy += (dfwd * Math.sin(prev_heading) + dstr * Math.cos(prev_heading));
 
     }
 
@@ -155,7 +172,7 @@ public class Localizer {
         if (d_heading > 1e-2) {
 
             dx = (Math.sin(d_heading)/d_heading) * dfwd + ((Math.cos(d_heading) - 1)/d_heading) * dstr;
-            dy = (Math.sin(d_heading)/d_heading) * dstr + (1 - (Math.cos(d_heading))/d_heading) * dfwd;
+            dy = (1 - (Math.cos(d_heading))/d_heading) * dfwd + (Math.sin(d_heading)/d_heading) * dstr;
 
         } else {
 
@@ -188,7 +205,8 @@ public class Localizer {
         packet.put("X POS", gx);
         packet.put("Y POS", gy);
         packet.put("HEADING", heading);
-        packet.put("DELTA TIME", d_time);
+        packet.put("HERTZ", 1/d_time);
+        packet.put("d_heading", d_heading);
         dashboard.sendTelemetryPacket(packet);
     }
 
@@ -214,6 +232,14 @@ public class Localizer {
 
     public double[] getDeltas() {
         return new double[]{dX, dY};
+    }
+
+    public double[] getVelocity() {
+        return new double[]{
+                X.getCorrectedVelocity(),
+                Y.getCorrectedVelocity(),
+                imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate
+        };
     }
 
 }

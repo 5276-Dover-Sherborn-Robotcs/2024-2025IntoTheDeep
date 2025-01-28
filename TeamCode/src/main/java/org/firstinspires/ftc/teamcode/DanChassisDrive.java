@@ -25,17 +25,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 @TeleOp(name = "DanChassisDrive")
 public class DanChassisDrive extends LinearOpMode {
 
-    // Kp = .2 power at 45 degree (1/8th of a rotation) error
+    public static double arm_rot_p = .7/45;
+    public static double arm_rot_i = 0.0;
+    public static double arm_rot_d = 0.0;
+    public static double arm_rot_g = Kg;
 
-    double Kp = 1.4/90, Ki = 0.0000001, Kd = 0.0;
-
-    PIDFCoefficients arm_rot_pidg = new PIDFCoefficients(
-            .7/45, 0.0, 0.0, Kg
-    );
-
-    PIDFCoefficients arm_ext_pidg = new PIDFCoefficients(
-            1/2.0, 0.0, 0.0, Kl
-    );
+    PIDFCoefficients arm_ext_pidg = new PIDFCoefficients(1/2.0, 0.0, 0.0, Kl);
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
@@ -48,7 +43,7 @@ public class DanChassisDrive extends LinearOpMode {
     ElapsedTime timer;
 
     // Arm Rotation control
-    double[] arm_positions = {INIT_ANGLE, 65, 87};
+    double[] arm_positions = {INIT_ANGLE, 65, 90};
     int current_arm_position_index = 0;
 
     // Arm Extension control
@@ -217,12 +212,8 @@ public class DanChassisDrive extends LinearOpMode {
                 in_rot.setPosition(current_in_position);
             }
 
-            if (gamepad1.cross) {
+            if (gamepad1.triangle) {
                 resetArmMotors();
-            }
-
-            if (gamepad1.square) {
-                arm_rot.setPower(-1.0);
             }
 
             prev_time = timer.time();
@@ -290,25 +281,27 @@ public class DanChassisDrive extends LinearOpMode {
         double error = arm_positions[current_arm_position_index] - arm_angle;
         Ki_sum += Math.abs(error) < 5 ? error : 0;
 
-        double p = error * arm_rot_pidg.p * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
+        double p = error * arm_rot_p * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
 
-        double i = Ki_sum * arm_rot_pidg.i;
+        double i = Ki_sum * arm_rot_i;
 
-        double d = (error - prev_error) * arm_rot_pidg.d;
+        double d = (error - prev_error) * arm_rot_d;
 
-        double g = Math.sin(Math.toRadians(arm_angle + 90)) * arm_rot_pidg.f;
+        double g = Math.sin(Math.toRadians(arm_angle + 90)) * arm_rot_g;
 
         double min_rot_power = p + i + d + g;
 
         min_rot_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
-
-
 
         if (Math.abs(error) >= 5) {
             Ki_sum = 0;
             if (current_arm_position_index == 0) {
                 min_rot_power = 0;
             }
+        }
+
+        if (gamepad1.square) {
+            min_rot_power = -1;
         }
 
         return min_rot_power;
