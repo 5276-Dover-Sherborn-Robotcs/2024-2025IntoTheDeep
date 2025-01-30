@@ -296,7 +296,7 @@ public class DanChassisDrive extends LinearOpMode {
         if (Math.abs(error) >= 5) {
             Ki_sum = 0;
             if (current_arm_position_index == 0) {
-                min_rot_power = 0;
+                min_rot_power = -0.1;
             }
         }
 

@@ -7,6 +7,7 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kgl;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kl;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.LATERAL_MULTIPLIER;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.SERVO_MULTIPLIER;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
@@ -47,8 +48,6 @@ public abstract class AutonomousOpMode extends OpMode {
     public double prev_error_y = 0, y_sum = 0; // some pid control
     public double prev_error_h = 0, h_sum = 0;
 
-    public Pose2D startPose;
-
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;;
 
@@ -66,7 +65,11 @@ public abstract class AutonomousOpMode extends OpMode {
         Intake_Position(double roll, double pitch1, double pitch2) {
             this.roll = roll;
             this.arm_pitch = pitch1;
-            this.intake_pitch = pitch2;
+            if (Math.abs(pitch2 - pitch1) > 135) {
+                this.intake_pitch = Math.copySign(135, pitch2 - pitch1);
+            } else {
+                this.intake_pitch = pitch2;
+            }
         }
     }
     public Intake_Position intake_position = Intake_Position.IDLE;
@@ -105,6 +108,7 @@ public abstract class AutonomousOpMode extends OpMode {
     // Localizer
     public Localizer localizer;
     Pose2D poseEstimate;
+    public Pose2D startPose;
 
     // Current state of the robot, IDLE is only used at the end of autonomous
     public enum states {
@@ -139,6 +143,7 @@ public abstract class AutonomousOpMode extends OpMode {
         assert (target_extension != null);
         assert (target_positions != null);
         assert (intake_position != null);
+        assert (startPose != null);
 
         // Multiple telemetry, honestly doesn't quite matter.
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
@@ -199,6 +204,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
         // Localizer
         localizer = new Localizer(hardwareMap, telemetry);
+        localizer.setPoseEstimate(startPose);
 
         double t0 = clock.seconds();
 
@@ -428,10 +434,19 @@ public abstract class AutonomousOpMode extends OpMode {
 
     public double intakePID() {
 
+        /*
+
+        There does exist a maximum difference between the arm pitch and the intake pitch, about +- 135 degrees
+
+         */
+
         Intake_Position pos = intake_position;
 
-        double arm_pitch_error = intake_position.arm_pitch - arm_pitch.getPosition();
-        double intake_pitch_error = intake_position.intake_pitch - intake_pitch.getPosition();
+        double arm_pitch_angle = arm_pitch.getPosition() * SERVO_MULTIPLIER;
+        double intake_pitch_angle = intake_pitch.getPosition() * SERVO_MULTIPLIER;
+
+        double arm_pitch_error = intake_position.arm_pitch - arm_pitch_angle;
+        double intake_pitch_error = intake_position.intake_pitch - intake_pitch_angle;
         double roll_error = intake_position.roll - intake_roll.getPosition();
 
         return arm_pitch_error + intake_pitch_error + roll_error;

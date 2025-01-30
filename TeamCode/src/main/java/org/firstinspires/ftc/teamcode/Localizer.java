@@ -1,8 +1,11 @@
 package org.firstinspires.ftc.teamcode;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Bx;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
 import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.canvas.Canvas;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -201,7 +204,29 @@ public class Localizer {
     }
 
     public void telemetrize() {
-        TelemetryPacket packet = new TelemetryPacket(false);
+        TelemetryPacket packet = new TelemetryPacket();
+
+        if (DEBUGGING) {
+
+            Canvas canvas = packet.field();
+
+            double[] x_points = {0, wheelbase/2, wheelbase/2, -wheelbase/2, -wheelbase/2, wheelbase/2, wheelbase/2};
+            double[] y_points = {0, 0, trackwidth/2, trackwidth/2, -trackwidth/2, -trackwidth/2, 0};
+
+            for (int i = 0; i < 7; i++) {
+
+                double x = x_points[i] * Math.cos(heading) - y_points[i] * Math.sin(heading);
+                double y = x_points[i] * Math.sin(heading) + y_points[i] * Math.cos(heading);
+
+                x_points[i] = x;
+                y_points[i] = y;
+
+            }
+
+            canvas.strokePolygon(x_points, y_points);
+
+        }
+
         packet.put("X POS", gx);
         packet.put("Y POS", gy);
         packet.put("HEADING", heading);

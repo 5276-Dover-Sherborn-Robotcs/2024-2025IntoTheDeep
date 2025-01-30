@@ -15,7 +15,7 @@ public class DanDriveConstants {
 
     public static double GEAR_RATIO = 3/2.0;
 
-    public static double MAX_VELOCITY = 60; // / Math.sqrt(2);
+    public static double MAX_VELOCITY = 60;
     public static double MAX_ACCELERATION = MAX_VELOCITY;
 
     public static double trackwidth = 15; // These values have been tuned (its weird ik (weight distribution))
@@ -42,6 +42,8 @@ public class DanDriveConstants {
     public static double Bx = -0.5;
 
     public static double LATERAL_MULTIPLIER = 2;
+
+    public static double SERVO_MULTIPLIER = 1800;
 
     public static double TEST_X = 24;
     public static double TEST_Y = 0;
