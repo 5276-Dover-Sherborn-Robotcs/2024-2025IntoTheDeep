@@ -17,6 +17,10 @@ public class JustMovingAuto extends AutonomousOpMode {
         public final double rotation;
 
         rotations(double rotation) {this.rotation = rotation;}
+
+        public double getRotation() {
+            return rotation;
+        }
     }
 
     //Extension positions, in inches
@@ -27,6 +31,10 @@ public class JustMovingAuto extends AutonomousOpMode {
 
         extensions(double extension) {this.extension = extension;}
 
+        @Override
+        public double getExtension() {
+            return extension;
+        }
     }
 
     // Positions the robot wants to be at
@@ -38,6 +46,11 @@ public class JustMovingAuto extends AutonomousOpMode {
         public final Pose2D pose;
 
         positions(Pose2D pose) {this.pose = pose;}
+
+        public Pose2D getPose() {
+            return pose;
+        }
+
     }
     // The order of positions the robot wants to move to
 

@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.BASE_MAX_EXTENSION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Ka;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
@@ -13,7 +14,10 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATIO
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
+import android.annotation.SuppressLint;
+
 import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
 import com.acmerobotics.roadrunner.util.NanoClock;
 import com.qualcomm.hardware.rev.RevColorSensorV3;
@@ -21,7 +25,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
+import com.qualcomm.robotcore.hardware.PIDCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -30,6 +34,7 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
 
+@Config
 public abstract class AutonomousOpMode extends OpMode {
 
     abstract public void mainLoop();
@@ -40,16 +45,20 @@ public abstract class AutonomousOpMode extends OpMode {
 
     RevColorSensorV3 colorSensor;
 
-    public static double FORWARD_GAIN = 0.1, Xd = 0.013, Xi = 0.0001; // 30% power at 50 inches error
-    public static double STRAFE_GAIN = 0.1, Yd = 0.013, Yi = 0;
-    public static double ANG_GAIN = 1.2, Hd = 0.2, Hi = 0;
+    public static double FORWARD_GAIN = 0.1, Xd = 0.015, Xi = 0.01; // 30% power at 50 inches error
+    public static double STRAFE_GAIN = 0.1, Yd = 0.015, Yi = 0.01;
+    public static double ANG_GAIN = .5, Hd = 0.2, Hi = 0.015;
+
+    public static double forward_weight = 0.75;
+    public static double strafe_weight = 0.75;
+    public static double turn_weight = 0.25;
 
     public double prev_error_x = 0, x_sum = 0;
     public double prev_error_y = 0, y_sum = 0; // some pid control
     public double prev_error_h = 0, h_sum = 0;
 
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
-    public boolean we_have_a_scoring_element = false;;
+    public boolean we_have_a_scoring_element = false;
 
     // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are global, and seperate.
     public enum Intake_Position {
@@ -77,30 +86,34 @@ public abstract class AutonomousOpMode extends OpMode {
 
     // Rotation positions, mostly just for a level of abstraction. Following that are a couple pid used things
     public interface Rotation {
-        public double rotation = 0.0;
+        double getRotation();
     }
     public Rotation target_rotation = null;
     public double min_rotation_power = 0.0;
     public double prev_rotation_error = 0, rotation_sum = 0;
-    PIDFCoefficients rotation_pidg = new PIDFCoefficients(
-            .7/45, 0.0, 0.0, Kg
+    public static PIDCoefficients rotation_pidg = new PIDCoefficients(
+            .7/45, 0.0, 0.0
     );
 
     //Extension positions, in inches
     public interface Extension {
-        public double extension = 0.0;
+        double getExtension();
     }
     public Extension target_extension = null;
     public double min_extension_power = 0.0;
-    public double extension_sum = 0;
+    public double prev_extension_error = 0, extension_sum = 0;
+    public static PIDCoefficients extension_pidg = new PIDCoefficients(
+            0.6/5, 0.0, 0.0
+    );
 
     // Positions the robot wants to be at
     public interface Position {
-        public Pose2D pose = null;
+        Pose2D getPose();
     }
     // The order of positions the robot wants to be at
     public Position[] target_positions = null;
     public int target_position_index = 0;
+    public int old_target_position_index = 0;
 
     // This is used to store all the motion profiles that move from each position.
     DualLinearMotionProfile[] path;
@@ -120,8 +133,9 @@ public abstract class AutonomousOpMode extends OpMode {
     public states state = states.MOVING;
 
     // Global variables so they can be accessed across methods
-    public double arm_angle;
-    public double arm_extension;
+    public double arm_angle = 0;
+    public double arm_extension = 0;
+    public double arm_extension_percentage = 0;
 
     // Status values for each PID system.
     public boolean profile_done;
@@ -130,7 +144,6 @@ public abstract class AutonomousOpMode extends OpMode {
     public double intake_error;
 
     NanoClock clock = NanoClock.system();
-    double path_init_time = 0;
 
     abstract public void variable_init();
 
@@ -140,9 +153,13 @@ public abstract class AutonomousOpMode extends OpMode {
         variable_init();
 
         assert (target_rotation != null);
+
         assert (target_extension != null);
+
         assert (target_positions != null);
+
         assert (intake_position != null);
+
         assert (startPose != null);
 
         // Multiple telemetry, honestly doesn't quite matter.
@@ -154,10 +171,13 @@ public abstract class AutonomousOpMode extends OpMode {
         bl = hardwareMap.get(DcMotorEx.class, "bl");
         br = hardwareMap.get(DcMotorEx.class, "br");
 
-        fl.setDirection(DcMotorSimple.Direction.FORWARD);
-        fr.setDirection(DcMotorSimple.Direction.REVERSE);
-        bl.setDirection(DcMotorSimple.Direction.FORWARD);
-        br.setDirection(DcMotorSimple.Direction.REVERSE);
+        fl.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        fr.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        fl.setDirection(DcMotorSimple.Direction.REVERSE);
+        fr.setDirection(DcMotorSimple.Direction.FORWARD);
+        bl.setDirection(DcMotorSimple.Direction.REVERSE);
+        br.setDirection(DcMotorSimple.Direction.FORWARD);
 
         fl.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         fl.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
@@ -186,14 +206,22 @@ public abstract class AutonomousOpMode extends OpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // Right now we only have an servo for pitch, hopefully we end up with one for roll as well. and maybe a 2nd pitch??
-        intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
+        // two pitch, one roll :D
         arm_pitch = hardwareMap.get(Servo.class, "arm_pitch");
+        intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
+        arm_pitch.scaleRange(0.225, 1-0.225);
+        arm_pitch.setPosition(0);
         intake_pitch.setDirection(Servo.Direction.REVERSE);
+        intake_pitch.scaleRange(0.225, 1-0.225);
         intake_pitch.setPosition(0);
+        intake_roll.scaleRange(1/6.0, 5/6.0);
         intake_roll.setPosition(0);
+
+        intake_left = hardwareMap.get(Servo.class, "left");
+        intake_right = hardwareMap.get(Servo.class, "right");
+        intake_left.setDirection(Servo.Direction.REVERSE);
 
         colorSensor = hardwareMap.get(RevColorSensorV3.class, "color");
         while (!colorSensor.initialize()) {
@@ -203,17 +231,15 @@ public abstract class AutonomousOpMode extends OpMode {
         we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
 
         // Localizer
-        localizer = new Localizer(hardwareMap, telemetry);
+        localizer = new Localizer(hardwareMap, telemetry, startPose);
         localizer.setPoseEstimate(startPose);
-
-        double t0 = clock.seconds();
 
         // Here, we iterate through each position we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
         Pose2D current_pose = startPose;
 
         for (Position pos : target_positions) {
-            Pose2D target_pose = pos.pose;
+            Pose2D target_pose = pos.getPose();
             temp_path.add(
                     new DualLinearMotionProfile(
                             current_pose,
@@ -224,19 +250,29 @@ public abstract class AutonomousOpMode extends OpMode {
             current_pose = target_pose;
         }
 
-        path = temp_path.toArray(new DualLinearMotionProfile[0]);
+        path = temp_path.toArray(new DualLinearMotionProfile[target_positions.length]);
 
-        path_init_time = clock.seconds()-t0;
+    }
+
+    public double angle_to_servo_position(double angle) {
+        return ((angle - arm_angle) / 600) + 0.5;
+    }
+
+    @SuppressLint("DefaultLocale")
+    @Override
+    public void init_loop() {
+
+        telemetry.addLine("Ready");
+
+        telemetry.update();
 
     }
 
     @Override
-    public void init_loop() {
+    public void start() {
 
-        telemetry.addData("Time to path init", path_init_time);
-        telemetry.addLine("Ready");
-
-        telemetry.update();
+        // start the first motion profile
+        path[0].start();
 
     }
 
@@ -258,22 +294,39 @@ public abstract class AutonomousOpMode extends OpMode {
 
         localizer.update();
 
+        localizer.telemetrize();
+
         poseEstimate = localizer.getPoseEstimate();
-        telemetry.addData("x", poseEstimate.x);
-        telemetry.addData("y", poseEstimate.y);
-        telemetry.addData("heading", poseEstimate.h);
 
         arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
         arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
+        arm_extension_percentage = arm_extension / BASE_MAX_EXTENSION;
 
-        profile_done = movePID(path[target_position_index]);
-        rotate_error = rotatePID(arm_angle);
-        if (state != states.GRABBING) extend_error = extendPID(arm_extension);
+        // I forgot to call start (or end on the old one), so we do that here every time the target position changes
+        if (old_target_position_index != target_position_index) {
+            path[old_target_position_index].end();
+            path[target_position_index].start();
+            h_sum = 0;
+            x_sum = 0;
+            y_sum = 0;
+            old_target_position_index = target_position_index;
+        }
+
+        profile_done = movePID();
+        rotate_error = rotatePID();
+        if (state != states.GRABBING) extend_error = extendPID();
         intake_error = intakePID();
 
-        telemetry.addData("Current Target Position", target_positions[target_position_index]);
-        telemetry.addData("Current Target Extension", target_extension);
-        telemetry.addData("Current Target Rotation", target_rotation);
+
+//        telemetry.addData("Current Target Position", target_positions[target_position_index]);
+//        telemetry.addData("Current Extension", arm_extension);
+//        telemetry.addData("Current Extension Error", extend_error);
+//        telemetry.addData("Current Target Extension", target_extension);
+//        telemetry.addData("Current Target Extension num", target_extension.getExtension());
+//        telemetry.addData("Current Rotation", arm_angle);
+//        telemetry.addData("Current Rotation Error", rotate_error);
+//        telemetry.addData("Current Target Rotation", target_rotation);
+//        telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
 
         telemetry.update();
 
@@ -281,19 +334,18 @@ public abstract class AutonomousOpMode extends OpMode {
 
     // Movement feedforward and PID control
 
-    public boolean movePID(DualLinearMotionProfile profile) {
+    public boolean movePID() {
         // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
-        Pose2D[] at_time = profile.get_state_at_time();
+        Pose2D[] at_time = path[target_position_index].get_state_at_time();
 
         Pose2D poseTarget = at_time[0];
-        Pose2D poseEstimate = localizer.getPoseEstimate();
 
         // PID control to account for error in where we are over time.
 
+        // Error calculation
         double error_x = poseTarget.x - poseEstimate.x;
         double error_y = poseTarget.y - poseEstimate.y;
         double error_h = poseTarget.h - poseEstimate.h;
-
         if ((2 * Math.PI - Math.abs(error_h)) < Math.abs(error_h)) {
             error_h = -Math.copySign(2 * Math.PI - Math.abs(error_h), error_h);
         }
@@ -304,25 +356,30 @@ public abstract class AutonomousOpMode extends OpMode {
         double turn = error_h * ANG_GAIN;
 
         // I gains
-
-        if (Math.abs(error_h) < 0.1) h_sum = 0;
-        if (Math.abs(error_x) < 0.1) x_sum = 0;
-        if (Math.abs(error_y) < 0.1) y_sum = 0;
-
+        // fun fact: strafe, forward, and turn... ARE DIFFERENT THINGS!!!
         x_sum += error_x;
-        if (x_sum * error_x < 0) x_sum = 0;
-        forward += x_sum * Xi;
         y_sum += error_y;
-        if (y_sum * error_y < 0) y_sum = 0;
-        forward += y_sum * Yi;
+        if (Math.hypot(error_x, error_y) < 0.2) {
+            x_sum = 0;
+            y_sum = 0;
+        }
+        forward += x_sum * Xi;
+        strafe += y_sum * Yi;
+
         h_sum += error_h;
-        if (h_sum * error_h < 0) h_sum = 0;
-        forward += h_sum * Hi;
+        if (Math.abs(error_h) < 0.05) h_sum = 0;
+        turn += h_sum * Hi;
 
         // D gains
         forward += (error_x - prev_error_x) / localizer.d_time * Xd;
         strafe += (error_y - prev_error_y) / localizer.d_time * Yd;
         turn += (error_h - prev_error_h) / localizer.d_time * Hd;
+
+        // Weigh it, such that turn does not take precedence
+        double[] weighed_control = weighedPID(forward, strafe, turn);
+        forward = weighed_control[0];
+        strafe = weighed_control[1];
+        turn = weighed_control[2];
 
         // Rotate it
         forward = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
@@ -337,11 +394,13 @@ public abstract class AutonomousOpMode extends OpMode {
         y *= LATERAL_MULTIPLIER;
         double w = (vel.h * Kv + accel.h * Ka) * (trackwidth/2 + wheelbase/2) + turn;
 
+        // sum it all up
         double pfl = x - y - w;
         double pfr = x + y + w;
         double pbl = x + y - w;
         double pbr = x - y + w;
 
+        // aaaaaaaand action
         fl.setPower(pfl);
         fr.setPower(pfr);
         bl.setPower(pbl);
@@ -351,57 +410,109 @@ public abstract class AutonomousOpMode extends OpMode {
         prev_error_y = error_y;
         prev_error_h = error_h;
 
-        double total_power = Math.abs(x) + Math.abs(y) + Math.abs(w);
+        boolean we_are_close_enough = (Math.hypot(error_x, error_y) < 0.5) && (Math.abs(error_h) < 0.05);
 
-        return profile.is_traj_done() && total_power < 0.1;
+        return path[target_position_index].is_traj_done() && we_are_close_enough;
+    }
+
+    public double[] weighedPID(double forward, double strafe, double turn) {
+
+        // the ratio of turn_weight to forward/strafe_weight is the "if all are one, what is the output:D
+
+        double forward_weighed = forward * forward_weight;
+        double strafe_weighed = strafe * strafe_weight;
+        double turn_weighed = turn * turn_weight;
+
+        double target = Math.max(Math.max(Math.abs(forward), Math.abs(strafe)), Math.abs(turn));
+
+        double x_mult = Math.abs(Math.min(target/forward_weighed, target/strafe_weighed));
+        double h_mult = Math.abs(target/turn_weighed);
+
+        double mult = Math.min(x_mult, h_mult);
+
+        return new double[]{
+                Math.copySign(forward_weighed * mult, forward),
+                Math.copySign(strafe_weighed * mult, strafe),
+                Math.copySign(turn_weighed * mult, turn)
+        };
+
     }
 
     // Its also possible to make some combined PID/kinematic controller for both rotation and extension, as polar coordinates?
 
-    public double rotatePID(double arm_angle) {
+    public double rotatePID() {
 
-        double error = target_rotation.rotation - arm_angle;
-        rotation_sum += Math.abs(error) < 5 ? error : 0;
+        double error = target_rotation.getRotation() - arm_angle;
+        rotation_sum += error;
 
-        double sin = Math.sin(Math.toRadians(arm_angle + 90));
+        double cos = Math.cos(Math.toRadians(arm_angle));
 
-        double p = error * rotation_pidg.p * (1 + sin *1.2);
+        double p = error * rotation_pidg.p * (1 + cos * 1.2);
 
         double i = rotation_sum * rotation_pidg.i;
 
-        double d = (error - prev_rotation_error) * rotation_pidg.d;
+        double d = (error - prev_rotation_error) / localizer.d_time * rotation_pidg.d;
 
-        double g = sin * rotation_pidg.f;
+        double g = cos * Kg;
 
         min_rotation_power = p + i + d + g;
 
-        min_rotation_power *= ((arm_extension * Kgl) + 1); // adjust for the length of the arm
+        min_rotation_power *= ((arm_extension_percentage * Kgl) + 1); // adjust for the length of the arm
 
         if (Math.abs(error) >= 5) {
             rotation_sum = 0;
-            if (target_rotation.rotation == 0) {
-                min_rotation_power = 0;
-            }
+        }
+
+        if (target_rotation.getRotation() == 0) {
+            if (Math.abs(error) >= 25) min_rotation_power = -0.2;
+            else min_rotation_power = 0;
         }
 
         arm_rot.setPower(min_rotation_power);
 
+        prev_rotation_error = error;
+
         return error;
     }
 
-    public double extendPID(double arm_extension) {
+    public double extendPID() {
 
         // todo: make some extension pid code using Kl and the arm_angle
 
-        min_extension_power = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
+        double rotation_slow = Math.min(1, Math.max(0, (1 - Math.log10(Math.abs(rotate_error)))));
+
+        double error = (target_extension.getExtension() - arm_extension);
+        extension_sum += error * rotation_slow;
+
+        double p = error * extension_pidg.p;
+
+        double i = extension_sum * extension_pidg.i;
+
+        double d = (error - prev_extension_error) / localizer.d_time * extension_pidg.d;
+
+        double g = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
+
+        min_extension_power = p + i + d + g;
+
+        if (Math.abs(error) < .5) extension_sum = 0;
+
+        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < 1) {
+            left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            right_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        }
+
+        // 1 - log base 100 of rotate error. the larger the rotation error is, the slower it extends.
+        min_extension_power *= rotation_slow;
 
         left_extend.setPower(min_extension_power);
         right_extend.setPower(min_extension_power);
 
-        return target_extension.extension - arm_extension;
+        prev_extension_error = error;
+
+        return target_extension.getExtension() - arm_extension;
     }
-
-
 
     public double[] mecanumDrive(double drivey, double drivex, double turn) {
 
@@ -458,7 +569,7 @@ public abstract class AutonomousOpMode extends OpMode {
         double green_red = (double) colorSensor.green() / colorSensor.red();
         double green_blue = (double) colorSensor.green() / colorSensor.blue();
 
-        return colorSensor.getDistance(DistanceUnit.CM) < 2.5 && Math.abs(green_red - 4.2) < .25 && Math.abs(green_blue - 1.2) < .25;
+        return colorSensor.getDistance(DistanceUnit.CM) < 2.5 && Math.abs(green_red - 1.25) < .25 && Math.abs(green_blue - 3.9) < .25;
 
     }
 
@@ -469,4 +580,8 @@ public abstract class AutonomousOpMode extends OpMode {
         // our priority level a chance to run
         Thread.yield();
     }
+
+
+
+
 }

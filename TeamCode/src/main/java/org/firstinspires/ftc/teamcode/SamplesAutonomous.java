@@ -231,7 +231,7 @@ public class SamplesAutonomous extends LinearOpMode {
         we_have_a_scoring_element = colorSensor.red() > 160 && colorSensor.green() > 160 && colorSensor.getDistance(DistanceUnit.CM) < 5;
 
         // Localizer
-        localizer = new Localizer(hardwareMap, telemetry);
+        localizer = new Localizer(hardwareMap, telemetry, positions.START.pose);
 
         // Here, we iterate through each position we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();

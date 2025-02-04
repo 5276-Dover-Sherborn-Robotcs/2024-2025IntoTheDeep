@@ -7,6 +7,8 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 @Config
 public class DanDriveConstants {
 
+    public static boolean DEBUGGING = false;
+
     public static double WHEEL_DIAMETER = 9.6/2.54;
     public static double WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * Math.PI;
 
@@ -24,7 +26,7 @@ public class DanDriveConstants {
     public static double MAX_ROTATIONAL_VELOCITY = 3.14;
     public static double MAX_ROTATIONAL_ACCELERATION = 3.14;
 
-    public static double Kv = 0.015; // found experimentally
+    public static double Kv = 0.010; // found experimentally then kicked down, pid shouldn't be pushing not pulling
     public static double Ka = 0.005;
     public static double Kp = 0;
 
@@ -36,8 +38,8 @@ public class DanDriveConstants {
     public static double BASE_MAX_EXTENSION = 97.0/2.54;
 
     public static double Kg = 0.28; // x power at 0 degrees/ when sin(theta) is 1
-    public static double Kgl = 3.5;
-    public static double Kl = 0.3/BASE_MAX_EXTENSION;
+    public static double Kgl = 4;
+    public static double Kl = 0.02; // tuned
 
     public static double Bx = -0.5;
 

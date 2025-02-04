@@ -63,7 +63,7 @@ public class motionProfileTest extends LinearOpMode {
 
         telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
 
-        localizer = new Localizer(hardwareMap, telemetry);
+        localizer = new Localizer(hardwareMap, telemetry, startPose);
 
         motionProfile = new DualLinearMotionProfile(telemetry);
 
@@ -216,10 +216,10 @@ public class motionProfileTest extends LinearOpMode {
         forward += x_sum * Xi;
         y_sum += error_y;
         if (y_sum * error_y < 0) y_sum = 0;
-        forward += y_sum * Yi;
+        strafe += y_sum * Yi;
         h_sum += error_h;
         if (h_sum * error_h < 0) h_sum = 0;
-        forward += h_sum * Hi;
+        turn += h_sum * Hi;
 
         // D gains
         forward += (error_x - prev_error_x) / localizer.d_time * Xd;
@@ -271,9 +271,10 @@ public class motionProfileTest extends LinearOpMode {
         packet.put("Profile Start Pose X", temp.x);
         packet.put("Profile Start Pose Y", temp.y);
         packet.put("Profile Start Pose H", temp.h);
-        packet.put("Start Pose X", temp.x);
-        packet.put("Start Pose Y", temp.y);
-        packet.put("Start Pose H", temp.h);
+        temp = profile.getEndPose();
+        packet.put("Profile End Pose X", temp.x);
+        packet.put("Profile End Pose Y", temp.y);
+        packet.put("Profile End Pose H", temp.h);
         packet.put("Target Pose X", at_time[0].x);
         packet.put("Target Pose Y", at_time[0].y);
         packet.put("Target Pose H", at_time[0].h);

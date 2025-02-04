@@ -9,7 +9,10 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 
 import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import com.qualcomm.hardware.rev.RevColorSensorV3;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -21,20 +24,25 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.teamcode.util.Pose2D;
 
+@Config
 @TeleOp(name = "DanChassisDrive")
 public class DanChassisDrive extends LinearOpMode {
 
-    public static double arm_rot_p = .7/45;
+    RevColorSensorV3 colorSensor;
+
+    public static double arm_rot_p = 0.02;
     public static double arm_rot_i = 0.0;
     public static double arm_rot_d = 0.0;
-    public static double arm_rot_g = Kg;
+    public double arm_angle = 0;
 
     PIDFCoefficients arm_ext_pidg = new PIDFCoefficients(1/2.0, 0.0, 0.0, Kl);
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
-    Servo left, right, in_rot;
+    Servo intake_left, intake_right, intake_pitch, intake_roll, arm_pitch;
 
     Localizer localizer;
 
@@ -46,12 +54,9 @@ public class DanChassisDrive extends LinearOpMode {
     double[] arm_positions = {INIT_ANGLE, 65, 90};
     int current_arm_position_index = 0;
 
-    // Arm Extension control
-    double[] arm_extensions = {47, ((38*2.54)/Math.sin(Math.toRadians(65)) - 38.4), BASE_MAX_EXTENSION};
-    int current_arm_extension_index = 0;
-
     // Intake rotation control
-    double current_in_position = 1.0;
+    double intake_pitch_pos = 0.5;
+    double arm_pitch_pos = 0.5;
 
     // PID variables
     double prev_error = 0;
@@ -61,6 +66,10 @@ public class DanChassisDrive extends LinearOpMode {
     boolean arm_rot_input = false;
 
     double prev_time;
+
+    public double angle_to_servo_position(double angle) {
+        return ((angle - arm_angle) / 600) + 0.5;
+    }
 
     @Override
     public void runOpMode() {
@@ -94,7 +103,7 @@ public class DanChassisDrive extends LinearOpMode {
 
         arm_rot.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         arm_rot.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        arm_rot.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        arm_rot.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         arm_rot.setDirection(DcMotorSimple.Direction.REVERSE);
         left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -105,15 +114,31 @@ public class DanChassisDrive extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        left = hardwareMap.get(Servo.class, "left");
-        left.setDirection(Servo.Direction.FORWARD);
-        right = hardwareMap.get(Servo.class, "right");
-        right.setDirection(Servo.Direction.REVERSE);
-        in_rot = hardwareMap.get(Servo.class, "intake_pitch");
-        in_rot.setDirection(Servo.Direction.FORWARD);
-        in_rot.setPosition(0.9);
+        // two pitch, one roll :D
+        arm_pitch = hardwareMap.get(Servo.class, "arm_pitch");
+        intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
+        intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
-        localizer = new Localizer(hardwareMap, telemetry);
+        arm_pitch.scaleRange(0.225, 1-0.225);
+        arm_pitch.setPosition(0);
+        intake_pitch.setDirection(Servo.Direction.REVERSE);
+        intake_pitch.scaleRange(0.225, 1-0.225);
+        intake_pitch.setPosition(0);
+        intake_roll.scaleRange(1/6.0, 5/6.0);
+        intake_roll.setPosition(0);
+
+        intake_left = hardwareMap.get(Servo.class, "left");
+        intake_right = hardwareMap.get(Servo.class, "right");
+        intake_left.setDirection(Servo.Direction.REVERSE);
+
+        colorSensor = hardwareMap.get(RevColorSensorV3.class, "color");
+        while (!colorSensor.initialize()) {
+            telemetry.addLine("Starting Color Sensor");
+            telemetry.update();
+        }
+        telemetry.addData("We have a sample", checkForSample());
+
+        localizer = new Localizer(hardwareMap, telemetry, new Pose2D(0, 0, 0));
 
         telemetry.addLine("Ready");
         telemetry.update();
@@ -126,10 +151,10 @@ public class DanChassisDrive extends LinearOpMode {
 
             mecanumDrive();
 
-            double arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
+            arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
 
 //            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
-            double MAX_EXTENSION = current_arm_position_index == 0 ? 47 : BASE_MAX_EXTENSION;
+            double MAX_EXTENSION = current_arm_position_index == 0 ? 47/2.54 : BASE_MAX_EXTENSION;
 
             double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
             double arm_extension_percentage = arm_extension / MAX_EXTENSION;
@@ -167,6 +192,9 @@ public class DanChassisDrive extends LinearOpMode {
 
             telemetry.addData("Extension Current", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
             telemetry.addData("Extension Power", (left_extend.getPower() + right_extend.getPower()) / 2.0);
+            telemetry.addData("Extension Passive Power", min_extend_power);
+
+            telemetry.addData("We Have a Sample", checkForSample());
 
             localizer.update();
 
@@ -197,19 +225,21 @@ public class DanChassisDrive extends LinearOpMode {
 
             double intake = (gamepad2.right_stick_y + gamepad2.left_stick_y) / 2.0 + 0.5;
 
-            left.setPosition(intake);
-            right.setPosition(intake);
+            intake_left.setPosition(intake);
+            intake_right.setPosition(intake);
 
             if (gamepad2.circle) {
-                current_in_position = 1.0;
+                arm_pitch_pos = angle_to_servo_position(-20);
+                intake_pitch_pos = angle_to_servo_position(-20);
             } else if (gamepad2.triangle) {
-                current_in_position = 0.5;
+                arm_pitch_pos = angle_to_servo_position(0);
+                intake_pitch_pos = angle_to_servo_position(0);
             }
 
             if (gamepad2.square) {
-                in_rot.setPosition(0.0);
+                arm_pitch.setPosition(0.0);
             } else {
-                in_rot.setPosition(current_in_position);
+                arm_pitch.setPosition(current_in_position);
             }
 
             if (gamepad1.triangle) {
@@ -219,6 +249,33 @@ public class DanChassisDrive extends LinearOpMode {
             prev_time = timer.time();
 
         }
+
+    }
+
+    public boolean checkForSample() {
+
+        double green = colorSensor.green();
+        double red = colorSensor.red();
+        double blue = colorSensor.blue();
+        double dist = colorSensor.getDistance(DistanceUnit.CM);
+
+        double green_red = green/red;
+        double green_blue = green/blue;
+
+        TelemetryPacket packet = new TelemetryPacket(false);
+
+        packet.put("Green", green);
+        packet.put("Blue", blue);
+        packet.put("Red", red);
+        packet.put("Dist", (dist < 2));
+        packet.put("Green/Red", (Math.abs(green_red - 1.25) < .25));
+        packet.put("Green/Blue", (Math.abs(green_blue - 3.9) < .25));
+        boolean value = (dist < 2) && (Math.abs(green_blue - 3.9) < .25) && (Math.abs(green_red - 1.25) < .25);
+        packet.put("sample total", value);
+
+        FtcDashboard.getInstance().sendTelemetryPacket(packet);
+
+        return value;
 
     }
 
@@ -281,13 +338,13 @@ public class DanChassisDrive extends LinearOpMode {
         double error = arm_positions[current_arm_position_index] - arm_angle;
         Ki_sum += Math.abs(error) < 5 ? error : 0;
 
-        double p = error * arm_rot_p * (1 + Math.sin(Math.toRadians(arm_angle + 90))*1.2);
+        double p = error * arm_rot_p * (1 + Math.sin(Math.toRadians(arm_angle + 90)) * 1.2);
 
         double i = Ki_sum * arm_rot_i;
 
         double d = (error - prev_error) * arm_rot_d;
 
-        double g = Math.sin(Math.toRadians(arm_angle + 90)) * arm_rot_g;
+        double g = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
 
         double min_rot_power = p + i + d + g;
 
@@ -296,7 +353,7 @@ public class DanChassisDrive extends LinearOpMode {
         if (Math.abs(error) >= 5) {
             Ki_sum = 0;
             if (current_arm_position_index == 0) {
-                min_rot_power = -0.1;
+                min_rot_power = -0.05;
             }
         }
 

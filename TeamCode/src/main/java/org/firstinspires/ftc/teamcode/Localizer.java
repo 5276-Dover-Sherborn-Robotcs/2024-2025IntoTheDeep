@@ -1,17 +1,18 @@
 package org.firstinspires.ftc.teamcode;
 
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Bx;
+import static org.firstinspires.ftc.teamcode.DanDriveConstants.DEBUGGING;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.canvas.Canvas;
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
+import com.acmerobotics.roadrunner.util.NanoClock;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
-import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -26,8 +27,6 @@ public class Localizer {
         RADIANS,
         MOTOR_RPM
     }
-
-    public boolean DEBUGGING = false;
 
     FtcDashboard dashboard = FtcDashboard.getInstance();
 
@@ -44,23 +43,31 @@ public class Localizer {
 
     public double current_time, previous_time, d_time = 0;
 
-    private double gx = 0, gy = 0, heading = 0;
+    private double gx;
+    private double gy;
+    private double heading;
+    private final double heading_0;
 
     Encoder X, Y;
     double old_X = 0, old_Y = 0;
     double dX = 0, dY = 0;
 
-    public ElapsedTime timer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+    public NanoClock clock = NanoClock.system();
+    public double start_time = 0;
 
     Telemetry telemetry;
+
+    Pose2D startPose = new Pose2D(0, 0, 0);
 
     public IMU imu;
     public boolean imu_ready = false;
     double prev_heading, d_heading;
 
-    public Localizer(HardwareMap hardwareMap, Telemetry t) {
+    public Localizer(HardwareMap hardwareMap, Telemetry t, Pose2D startPose) {
 
         telemetry = t;
+
+        this.startPose = startPose;
 
         X = new Encoder(hardwareMap.get(DcMotorEx.class, "fl"));
         Y = new Encoder(hardwareMap.get(DcMotorEx.class, "fr"));
@@ -81,13 +88,14 @@ public class Localizer {
         imu_ready = imu.initialize(new IMU.Parameters(orientationOnRobot));
 
         imu.resetYaw();
-        heading = 0;
-        gx = 0;
-        gy = 0;
-        prev_heading = 0;
+        heading_0 = startPose.h;
+        heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS) + heading_0;
+        gx = startPose.x;
+        gy = startPose.y;
+        prev_heading = heading;
         d_heading = 0;
 
-        timer.reset();
+        start_time = clock.seconds();
         current_time = 0;
 
     }
@@ -98,7 +106,7 @@ public class Localizer {
         // y += dy * cos(dtheta) + dx * sin(dtheta)
         // theta += dtheta
 
-        heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS) + heading_0;
         heading += (heading < 0) ? 2*PI : 0;
         d_heading = heading - prev_heading;
 
@@ -106,7 +114,7 @@ public class Localizer {
             d_heading = -Math.copySign(2*Math.PI - Math.abs(d_heading), d_heading);
         }
 
-        current_time = timer.time()/1000.0;
+        current_time = clock.seconds() - start_time;
         d_time  = current_time - previous_time;
 
         double x = X.getCurrentPosition();
@@ -172,7 +180,7 @@ public class Localizer {
         double dx;
         double dy;
 
-        if (d_heading > 1e-2) {
+        if (d_heading > 1e-4) {
 
             dx = (Math.sin(d_heading)/d_heading) * dfwd + ((Math.cos(d_heading) - 1)/d_heading) * dstr;
             dy = (1 - (Math.cos(d_heading))/d_heading) * dfwd + (Math.sin(d_heading)/d_heading) * dstr;
@@ -184,8 +192,8 @@ public class Localizer {
 
         }
 
-        gx += (dx * Math.cos(prev_heading) - dy * Math.sin(prev_heading));
-        gy += (dx * Math.sin(prev_heading) + dy * Math.cos(prev_heading));
+        gx += (dx * Math.cos(heading_0) - dy * Math.sin(heading_0));
+        gy += (dx * Math.sin(heading_0) + dy * Math.cos(heading_0));
 
     }
 
@@ -200,7 +208,7 @@ public class Localizer {
         gx = 0;
         gy = 0;
 
-        timer.reset();
+        start_time = clock.seconds();
     }
 
     public void telemetrize() {
@@ -225,18 +233,21 @@ public class Localizer {
 
             canvas.strokePolygon(x_points, y_points);
 
+
+            packet.put("HERTZ", 1/d_time);
+            packet.put("d_heading", d_heading);
+            packet.put("d_time", d_time);
+
         }
 
         packet.put("X POS", gx);
         packet.put("Y POS", gy);
         packet.put("HEADING", heading);
-        packet.put("HERTZ", 1/d_time);
-        packet.put("d_heading", d_heading);
         dashboard.sendTelemetryPacket(packet);
     }
 
     public double time() {
-        return timer.time();
+        return clock.seconds();
     }
 
     public double getX() {
