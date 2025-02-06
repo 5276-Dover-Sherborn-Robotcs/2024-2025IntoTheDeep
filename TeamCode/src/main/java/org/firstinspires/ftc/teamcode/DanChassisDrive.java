@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode;
 
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.BASE_MAX_EXTENSION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.INIT_ANGLE;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kg;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kgl;
@@ -11,17 +10,14 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATIO
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.config.Config;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
-import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.qualcomm.hardware.rev.RevColorSensorV3;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
-import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
@@ -33,14 +29,14 @@ public class DanChassisDrive extends LinearOpMode {
 
     RevColorSensorV3 colorSensor;
 
-    public static double arm_rot_p = 0.02;
+    public static double arm_rot_p = 0.015;
     public static double arm_rot_i = 0.0;
     public static double arm_rot_d = 0.0;
     public double arm_angle = 0;
+    public double arm_extension = 0;
+    public double arm_extension_percentage = 0;
 
-    PIDFCoefficients arm_ext_pidg = new PIDFCoefficients(1/2.0, 0.0, 0.0, Kl);
-
-    DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
+    DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend, climbing_arm_motor;
 
     Servo intake_left, intake_right, intake_pitch, intake_roll, arm_pitch;
 
@@ -51,12 +47,14 @@ public class DanChassisDrive extends LinearOpMode {
     ElapsedTime timer;
 
     // Arm Rotation control
-    double[] arm_positions = {INIT_ANGLE, 65, 90};
+    double[] arm_positions = {INIT_ANGLE, 75, 90};
     int current_arm_position_index = 0;
 
     // Intake rotation control
-    double intake_pitch_pos = 0.5;
-    double arm_pitch_pos = 0.5;
+    public static double pitch_speed_control = 3; // tuned
+    double intake_pitch_pos = 1.0;
+    double arm_pitch_pos = 1.0;
+    double intake_roll_pos = 0.0;
 
     // PID variables
     double prev_error = 0;
@@ -64,12 +62,15 @@ public class DanChassisDrive extends LinearOpMode {
 
     // booleans to allow for pressing the button once does a thing once
     boolean arm_rot_input = false;
+    boolean flipped = false;
+    boolean climbing_bar = false;
+    boolean clamping = false, clamped = false;
+    boolean we_have_a_sample = false;
+    boolean specimen = false, g2_swapping = false;
 
-    double prev_time;
+    double climbing_bar_power = 0.0;
 
-    public double angle_to_servo_position(double angle) {
-        return ((angle - arm_angle) / 600) + 0.5;
-    }
+    double prev_time = 0;
 
     @Override
     public void runOpMode() {
@@ -119,13 +120,13 @@ public class DanChassisDrive extends LinearOpMode {
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
-        arm_pitch.scaleRange(0.225, 1-0.225);
-        arm_pitch.setPosition(0);
-        intake_pitch.setDirection(Servo.Direction.REVERSE);
-        intake_pitch.scaleRange(0.225, 1-0.225);
-        intake_pitch.setPosition(0);
-        intake_roll.scaleRange(1/6.0, 5/6.0);
-        intake_roll.setPosition(0);
+        arm_pitch.setDirection(Servo.Direction.REVERSE);
+        arm_pitch.scaleRange(.5-0.225, .5+0.225);
+        arm_pitch.setPosition(1.0);
+        intake_pitch.scaleRange(.5-0.225, .5+0.225);
+        intake_pitch.setPosition(1.0);
+        intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
+        intake_roll.setPosition(1.0);
 
         intake_left = hardwareMap.get(Servo.class, "left");
         intake_right = hardwareMap.get(Servo.class, "right");
@@ -151,18 +152,24 @@ public class DanChassisDrive extends LinearOpMode {
 
             mecanumDrive();
 
+            localizer.update();
+
             arm_angle = Math.max(0, (arm_rot.getCurrentPosition() / TICKS_PER_ROTATION * 360)) + INIT_ANGLE;
 
-//            double MAX_EXTENSION = BASE_MAX_EXTENSION * (1 - Math.cos(arm_angle) * (1 - (58.0/BASE_MAX_EXTENSION))); // 1 - (cos - cos*(fraction)) = 1 - cos + cos*fraction
-            double MAX_EXTENSION = current_arm_position_index == 0 ? 47/2.54 : BASE_MAX_EXTENSION;
+            double temp = (42-(19+9.5))/Math.cos(Math.toRadians(arm_angle));
 
-            double arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
-            double arm_extension_percentage = arm_extension / MAX_EXTENSION;
+            if (Math.abs(temp) > 42) temp = 42;
 
-            double min_extend_power = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
+            telemetry.addData("Calculated Max Extension", temp);
+            double MAX_EXTENSION = temp;
+
+            arm_extension = ((left_extend.getCurrentPosition() + right_extend.getCurrentPosition()) / 2.0 / TICKS_PER_INCH);
+            arm_extension_percentage = arm_extension / MAX_EXTENSION;
+
+            double min_extend_power = Math.max(0, arm_extension * Kl * Math.sin(Math.toRadians(arm_angle)));
+
 
             telemetry.addData("DELTA TIME", timer.time() - prev_time);
-
             telemetry.addData("Target Arm Rotation Position", current_arm_position_index);
             telemetry.addData("Arm Extension Position", arm_extension);
             telemetry.addData("Arm Rotation Position", arm_angle);
@@ -172,37 +179,22 @@ public class DanChassisDrive extends LinearOpMode {
                     current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
                     Ki_sum = 0;
                 }
-//
-//                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, 1, 0.25 * (timer.time() - prev_time));
-
             } else if (gamepad2.dpad_down) {
                 if (!arm_rot_input) {
                     current_arm_position_index = Math.max(current_arm_position_index - 1, 0);
                     Ki_sum = 0;
                 }
-//
-//                current_arm_rotation_power = rateLimiter(current_arm_rotation_power, -.5, 0.25 * (timer.time() - prev_time));
             }
 
-            arm_rot.setPower(rotatePID(arm_angle, arm_extension_percentage));
+            arm_rot.setPower(rotatePID());
             arm_rot_input = gamepad2.dpad_up || gamepad2.dpad_down;
 
-            telemetry.addData("Rotation Current", arm_rot.getCurrent(CurrentUnit.AMPS));
-            telemetry.addData("Rotation Power", arm_rot.getPower());
-
-            telemetry.addData("Extension Current", (left_extend.getCurrent(CurrentUnit.AMPS) + right_extend.getCurrent(CurrentUnit.AMPS)) / 2.0);
-            telemetry.addData("Extension Power", (left_extend.getPower() + right_extend.getPower()) / 2.0);
-            telemetry.addData("Extension Passive Power", min_extend_power);
-
-            telemetry.addData("We Have a Sample", checkForSample());
-
-            localizer.update();
+            we_have_a_sample = checkForSample();
+            telemetry.addData("We Have a Sample", we_have_a_sample);
 
             telemetry.addData("X", localizer.getX());
             telemetry.addData("Y", localizer.getY());
             telemetry.addData("Heading", localizer.getHeading());
-
-            telemetry.update();
 
 //            telemetry.update();
 
@@ -223,30 +215,105 @@ public class DanChassisDrive extends LinearOpMode {
                 right_extend.setPower(triggers_input + min_extend_power);
             }
 
-            double intake = (gamepad2.right_stick_y + gamepad2.left_stick_y) / 2.0 + 0.5;
+            if ((gamepad2.right_bumper || gamepad2.left_bumper) && !g2_swapping) {
+                specimen = !specimen;
+            }
+            g2_swapping = gamepad2.right_bumper || gamepad2.left_bumper;
+
+            double intake = (gamepad1.right_trigger - gamepad1.left_trigger) / 2.0 + 0.5;
+
+            if (we_have_a_sample) intake = Math.max(0.5, intake);
 
             intake_left.setPosition(intake);
             intake_right.setPosition(intake);
 
-            if (gamepad2.circle) {
-                arm_pitch_pos = angle_to_servo_position(-20);
-                intake_pitch_pos = angle_to_servo_position(-20);
-            } else if (gamepad2.triangle) {
-                arm_pitch_pos = angle_to_servo_position(0);
-                intake_pitch_pos = angle_to_servo_position(0);
+            if (gamepad2.b && !flipped) {
+                intake_roll_pos = 1 - intake_roll_pos;
+                intake_roll.setPosition(intake_roll_pos);
+            }
+            flipped = gamepad2.b;
+
+
+            double dt = localizer.d_time;
+
+            arm_pitch_pos -= (gamepad2.left_stick_y / pitch_speed_control * dt);
+            intake_pitch_pos -= (gamepad2.right_stick_y / pitch_speed_control * dt);
+
+            if (Math.abs(intake_pitch_pos - arm_pitch_pos) > 0.4) {
+                intake_pitch_pos = arm_pitch_pos + Math.copySign(0.4, intake_pitch_pos - arm_pitch_pos);
             }
 
-            if (gamepad2.square) {
-                arm_pitch.setPosition(0.0);
-            } else {
-                arm_pitch.setPosition(current_in_position);
+            arm_pitch_pos = Math.min(1.0, Math.max(0, arm_pitch_pos));
+            intake_pitch_pos = Math.min(1.0, Math.max(0, intake_pitch_pos));
+
+            if (gamepad2.a) {
+                arm_pitch_pos = -35./270 + .5;
+                intake_pitch_pos = .5;
+                intake_roll_pos = 0;
+                intake_roll.setPosition(intake_roll_pos);
+            } else if (gamepad2.y) {
+                arm_pitch_pos = 1;
+                intake_pitch_pos = 1;
+            }else if (gamepad2.x) {
+                if (specimen) {
+                    arm_pitch_pos = -arm_angle/270 + .5;
+                    intake_pitch_pos = .5;
+                } else {
+                    arm_pitch_pos = .4;
+                    intake_pitch_pos = 0.0;
+                }
+                intake_roll_pos = 0;
+                intake_roll.setPosition(intake_roll_pos);
             }
 
-            if (gamepad1.triangle) {
+            if (current_arm_position_index == 0) {
+                double y1 = Math.sin(Math.toRadians((arm_pitch_pos - 0.5) * 270)) * 4.72;
+                double y2 = Math.sin(Math.toRadians((intake_pitch_pos - 0.5) * 270)) * 5.89;
+                telemetry.addData("Y position of intake", y1 + y2);
+                if (y1 + y2 < -3) {
+                    if (y1 > -3) {
+                        intake_pitch_pos = Math.asin((-3 - y1) / 5.89)/270 + .5;
+                    } else {
+                        arm_pitch_pos = Math.asin(-3 / 4.78)/270 + .5;
+                        intake_pitch_pos = 0.5;
+                    }
+                }
+            }
+
+            telemetry.addData("Arm Pitch Pos", arm_pitch_pos);
+            telemetry.addData("Arm Pitch Angle", (arm_pitch_pos - 0.5) * 270);
+            telemetry.addData("Intake Pitch Pos", intake_pitch_pos);
+            telemetry.addData("Intake Pitch Angle", (intake_pitch_pos - 0.5) * 270);
+
+            telemetry.addData("Specimen Mode", specimen);
+
+            arm_pitch.setPosition(arm_pitch_pos);
+            intake_pitch.setPosition(intake_pitch_pos);
+
+            prev_time = time;
+
+
+            if (gamepad1.y) {
                 resetArmMotors();
             }
 
+
+            if (gamepad1.a && !climbing_bar) {
+                climbing_bar_power = 0.2 - climbing_bar_power;
+                // climbing_bar_motor.setPower(climbing_bar_power);
+            }
+            climbing_bar = gamepad1.a;
+
+
+            if (gamepad1.x && !clamping) {
+                clamped = !clamped;
+            }
+            clamping = gamepad1.x;
+
+
             prev_time = timer.time();
+
+            telemetry.update();
 
         }
 
@@ -262,20 +329,7 @@ public class DanChassisDrive extends LinearOpMode {
         double green_red = green/red;
         double green_blue = green/blue;
 
-        TelemetryPacket packet = new TelemetryPacket(false);
-
-        packet.put("Green", green);
-        packet.put("Blue", blue);
-        packet.put("Red", red);
-        packet.put("Dist", (dist < 2));
-        packet.put("Green/Red", (Math.abs(green_red - 1.25) < .25));
-        packet.put("Green/Blue", (Math.abs(green_blue - 3.9) < .25));
-        boolean value = (dist < 2) && (Math.abs(green_blue - 3.9) < .25) && (Math.abs(green_red - 1.25) < .25);
-        packet.put("sample total", value);
-
-        FtcDashboard.getInstance().sendTelemetryPacket(packet);
-
-        return value;
+        return (dist < 3);
 
     }
 
@@ -327,24 +381,17 @@ public class DanChassisDrive extends LinearOpMode {
         timer.reset();
     }
 
-    public double rateLimiter(double current_speed, double target_speed, double max_accel) {
-
-        double change = Range.clip(target_speed-current_speed, -max_accel, max_accel);
-        return current_speed + change;
-
-    }
-
-    public double rotatePID(double arm_angle, double arm_extension_percentage) {
+    public double rotatePID() {
         double error = arm_positions[current_arm_position_index] - arm_angle;
         Ki_sum += Math.abs(error) < 5 ? error : 0;
 
-        double p = error * arm_rot_p * (1 + Math.sin(Math.toRadians(arm_angle + 90)) * 1.2);
+        double p = error * arm_rot_p * (1 + Math.cos(Math.toRadians(arm_angle)) * 1.2);
 
         double i = Ki_sum * arm_rot_i;
 
         double d = (error - prev_error) * arm_rot_d;
 
-        double g = Math.sin(Math.toRadians(arm_angle + 90)) * Kg;
+        double g = Math.cos(Math.toRadians(arm_angle)) * Kg;
 
         double min_rot_power = p + i + d + g;
 
@@ -352,12 +399,13 @@ public class DanChassisDrive extends LinearOpMode {
 
         if (Math.abs(error) >= 5) {
             Ki_sum = 0;
-            if (current_arm_position_index == 0) {
-                min_rot_power = -0.05;
-            }
         }
 
-        if (gamepad1.square) {
+        if (current_arm_position_index == 0) {
+            min_rot_power = -0.05;
+        }
+
+        if (clamped) {
             min_rot_power = -1;
         }
 

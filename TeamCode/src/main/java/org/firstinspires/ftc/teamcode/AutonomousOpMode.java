@@ -8,7 +8,6 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kgl;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kl;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.Kv;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.LATERAL_MULTIPLIER;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.SERVO_MULTIPLIER;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_INCH;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.TICKS_PER_ROTATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
@@ -60,11 +59,11 @@ public abstract class AutonomousOpMode extends OpMode {
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
 
-    // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are global, and seperate.
+    // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are local (global is overly complex), and seperate.
     public enum Intake_Position {
-        IDLE(0.0, 135, 0),
-        BUCKET_FORWARD(1.0, -45.0, -90.0),
-        GROUND(0.0, -45.0, 0.0),
+        IDLE(0.0, 135, 135),
+        BUCKET_FORWARD(1.0, -65.0, -45.0),
+        GROUND(0.0, -5.0, 0.0),
         SPECIMEN_FORWARD(0.0, 0.0, 0.0);
 
         public final double roll;
@@ -81,7 +80,8 @@ public abstract class AutonomousOpMode extends OpMode {
             }
         }
     }
-    public Intake_Position intake_position = Intake_Position.IDLE;
+    public Intake_Position intake_position = null;
+    public Intake_Position old_intake_position = Intake_Position.IDLE;
     public double intake = 0.5; // This is the current power of the intake servos. 0.5 is not moving, 0.0 is one way, 1.0 is the other
 
     // Rotation positions, mostly just for a level of abstraction. Following that are a couple pid used things
@@ -211,13 +211,14 @@ public abstract class AutonomousOpMode extends OpMode {
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
-        arm_pitch.scaleRange(0.225, 1-0.225);
-        arm_pitch.setPosition(0);
-        intake_pitch.setDirection(Servo.Direction.REVERSE);
-        intake_pitch.scaleRange(0.225, 1-0.225);
-        intake_pitch.setPosition(0);
-        intake_roll.scaleRange(1/6.0, 5/6.0);
-        intake_roll.setPosition(0);
+
+        arm_pitch.setDirection(Servo.Direction.REVERSE);
+        arm_pitch.scaleRange(.5-0.225, .5+0.225);
+        arm_pitch.setPosition(intake_position.arm_pitch/135 + .5);
+        intake_pitch.scaleRange(.5-0.225, .5+0.225);
+        intake_pitch.setPosition(intake_position.intake_pitch/135 + .5);
+        intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
+        intake_roll.setPosition(intake_position.roll);
 
         intake_left = hardwareMap.get(Servo.class, "left");
         intake_right = hardwareMap.get(Servo.class, "right");
@@ -255,7 +256,7 @@ public abstract class AutonomousOpMode extends OpMode {
     }
 
     public double angle_to_servo_position(double angle) {
-        return ((angle - arm_angle) / 600) + 0.5;
+        return (angle / 135) / 2 + 0.5;
     }
 
     @SuppressLint("DefaultLocale")
@@ -312,21 +313,28 @@ public abstract class AutonomousOpMode extends OpMode {
             old_target_position_index = target_position_index;
         }
 
+        if (old_intake_position != intake_position) {
+            arm_pitch.setPosition(intake_position.arm_pitch/135 + 0.5);
+            intake_pitch.setPosition(intake_position.intake_pitch/135 + 0.5);
+            intake_roll.setPosition(intake_position.roll);
+            old_intake_position = intake_position;
+        }
+
         profile_done = movePID();
         rotate_error = rotatePID();
         if (state != states.GRABBING) extend_error = extendPID();
-        intake_error = intakePID();
+//        intake_error = intakePID(); To be worked on
 
 
-//        telemetry.addData("Current Target Position", target_positions[target_position_index]);
-//        telemetry.addData("Current Extension", arm_extension);
-//        telemetry.addData("Current Extension Error", extend_error);
-//        telemetry.addData("Current Target Extension", target_extension);
-//        telemetry.addData("Current Target Extension num", target_extension.getExtension());
-//        telemetry.addData("Current Rotation", arm_angle);
-//        telemetry.addData("Current Rotation Error", rotate_error);
-//        telemetry.addData("Current Target Rotation", target_rotation);
-//        telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
+        telemetry.addData("Current Target Position", target_positions[target_position_index]);
+        telemetry.addData("Current Extension", arm_extension);
+        telemetry.addData("Current Extension Error", extend_error);
+        telemetry.addData("Current Target Extension", target_extension);
+        telemetry.addData("Current Target Extension num", target_extension.getExtension());
+        telemetry.addData("Current Rotation", arm_angle);
+        telemetry.addData("Current Rotation Error", rotate_error);
+        telemetry.addData("Current Target Rotation", target_rotation);
+        telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
 
         telemetry.update();
 
@@ -479,7 +487,8 @@ public abstract class AutonomousOpMode extends OpMode {
 
         // todo: make some extension pid code using Kl and the arm_angle
 
-        double rotation_slow = Math.min(1, Math.max(0, (1 - Math.log10(Math.abs(rotate_error)))));
+//        double rotation_slow = Math.min(1, Math.max(0, (1 - Math.log10(Math.abs(rotate_error)))));
+        double rotation_slow = 1;
 
         double error = (target_extension.getExtension() - arm_extension);
         extension_sum += error * rotation_slow;
@@ -491,12 +500,13 @@ public abstract class AutonomousOpMode extends OpMode {
         double d = (error - prev_extension_error) / localizer.d_time * extension_pidg.d;
 
         double g = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
+        if (rotate_error < 5 && target_rotation.getRotation() == 0) g = 0;
 
         min_extension_power = p + i + d + g;
 
         if (Math.abs(error) < .5) extension_sum = 0;
 
-        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < 1) {
+        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < .5) {
             left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -543,33 +553,35 @@ public abstract class AutonomousOpMode extends OpMode {
 
     }
 
-    public double intakePID() {
+    public void intakeControl() {
 
         /*
 
-        There does exist a maximum difference between the arm pitch and the intake pitch, about +- 135 degrees
+        There does exist a maximum difference between the arm pitch and the intake pitch, about +- 135 degrees (NON SYMMETRICAL, FIND IT)
 
          */
 
-        Intake_Position pos = intake_position;
-
-        double arm_pitch_angle = arm_pitch.getPosition() * SERVO_MULTIPLIER;
-        double intake_pitch_angle = intake_pitch.getPosition() * SERVO_MULTIPLIER;
-
-        double arm_pitch_error = intake_position.arm_pitch - arm_pitch_angle;
-        double intake_pitch_error = intake_position.intake_pitch - intake_pitch_angle;
-        double roll_error = intake_position.roll - intake_roll.getPosition();
-
-        return arm_pitch_error + intake_pitch_error + roll_error;
+        arm_pitch.setPosition(intake_position.arm_pitch/135 + .5);
+        intake_pitch.setPosition(intake_position.intake_pitch/135 + .5);
+        intake_roll.setPosition(intake_position.roll);
 
     }
 
     public boolean checkForSample() {
 
-        double green_red = (double) colorSensor.green() / colorSensor.red();
-        double green_blue = (double) colorSensor.green() / colorSensor.blue();
+        double green = colorSensor.green();
+        double red = colorSensor.red();
+        double blue = colorSensor.blue();
+        double dist = colorSensor.getDistance(DistanceUnit.CM);
 
-        return colorSensor.getDistance(DistanceUnit.CM) < 2.5 && Math.abs(green_red - 1.25) < .25 && Math.abs(green_blue - 3.9) < .25;
+        double green_red = green/red;
+        double green_blue = green/blue;
+
+        telemetry.addData("Green/Blue", green_blue);
+        telemetry.addData("Green/Red", green_red);
+        telemetry.addData("Distance", dist);
+
+        return (dist < 2) && (Math.abs(green_blue - 3.8) < .3) && (Math.abs(green_red - 1.25) < .3);
 
     }
 

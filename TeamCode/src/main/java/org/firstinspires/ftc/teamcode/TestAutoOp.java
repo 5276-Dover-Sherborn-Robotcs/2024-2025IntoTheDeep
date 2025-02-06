@@ -52,12 +52,14 @@ public class TestAutoOp extends AutonomousOpMode {
         }
     }
 
+
     public rotation[] rotations = {
             rotation.IDLE,
             rotation.UP,
             rotation.UP2
     };
     public int rotation_index = 0;
+
 
     double start_time = 0;
 
@@ -68,14 +70,14 @@ public class TestAutoOp extends AutonomousOpMode {
     @Override
     public void mainLoop() {
 
-        double time = clock.seconds() - start_time;
-
-        if (time > 10 && profile_done) {
-
-            target_position_index = (target_position_index + 1) % 3;
-
-            start_time = clock.seconds();
-
+        we_have_a_scoring_element = checkForSample();
+        if (!we_have_a_scoring_element) {
+            left_extend.setPower(0.2);
+            right_extend.setPower(0.2);
+            intake = 0.35;
+        } else if (state != states.IDLE) {
+            state = states.IDLE;
+            intake_position = Intake_Position.IDLE;
         }
 
     }
@@ -86,13 +88,13 @@ public class TestAutoOp extends AutonomousOpMode {
         target_rotation = rotation.IDLE;
         target_extension = extension.IDLE;
         target_positions = new position[] {
-                position.NEXT,
-                position.FINAL,
                 position.IDLE
         };
         target_position_index = 0;
-        intake_position = Intake_Position.IDLE;
+        intake_position = Intake_Position.GROUND;
         startPose = position.IDLE.getPose();
+
+        state = states.GRABBING;
 
         start_time = clock.seconds();
 
