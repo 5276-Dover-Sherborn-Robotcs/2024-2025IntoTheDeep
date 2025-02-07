@@ -8,8 +8,11 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 public class TestAutoOp extends AutonomousOpMode {
 
     public enum position implements Position {
-        IDLE(new Pose2D(0, 0, 0)),
-        NEXT(new Pose2D(-12, 12, -Math.PI/4));
+        START(new Pose2D(-16.5, -12, -Math.PI/2)),
+        BASKET(new Pose2D(-3, 3, -Math.PI/4)),
+        SAMPLE1(new Pose2D(1.5, 0.5, 0)),
+        SAMPLE2(new Pose2D(1.5, 10.5, 0)),
+        SAMPLE3(new Pose2D(9, 8, Math.PI/4));
 
         public final Pose2D pose;
 
@@ -38,7 +41,7 @@ public class TestAutoOp extends AutonomousOpMode {
     }
     public enum extension implements Extension {
         IDLE(0.0),
-        OUT(30);
+        OUT(31);
 
         public final double ext;
 
@@ -51,14 +54,6 @@ public class TestAutoOp extends AutonomousOpMode {
         }
     }
 
-
-
-    double start_time = 0;
-
-    boolean swapped_recently = false;
-    boolean we_extended = false;
-    boolean we_retracted = false;
-
     @Override
     public void mainLoop() {
 
@@ -66,23 +61,31 @@ public class TestAutoOp extends AutonomousOpMode {
 
         switch (state) {
             case IDLE:
-                switch (target_position_index) {
-                    case 2:
-                        state = states.GRABBING;
-                        target_position_index = 0;
-                        break;
-                    case 1:
-                        state = states.DEPOSITING;
-                        intake_position = Intake_Position.GROUND;
-                        break;
-                    case 0:
+
+
+                if (we_have_a_scoring_element) {
+                    if (target_positions[target_position_index] != position.BASKET) {
                         target_position_index++;
                         state = states.MOVING;
-                        break;
+                    } else {
+                        state = states.DEPOSITING;
+                    }
+                } else {
+                    if (target_positions[target_position_index] != position.BASKET) {
+                        state = states.GRABBING;
+                        intake_position = Intake_Position.GROUND;
+                    } else {
+                        target_position_index++;
+                        state = states.MOVING;
+                    }
                 }
 
                 break;
+
+
             case GRABBING:
+
+
                 if (!we_have_a_scoring_element) {
                     left_extend.setPower(0.75);
                     right_extend.setPower(0.75);
@@ -90,25 +93,51 @@ public class TestAutoOp extends AutonomousOpMode {
                 } else {
                     state = states.IDLE;
                     intake_position = Intake_Position.IDLE;
-                    start_time = clock.seconds();
                 }
                 break;
+
+
             case MOVING:
-                if (profile_done) state = states.IDLE;
-                else if (target_positions[target_position_index].getPose().dist(poseEstimate) < 5) {
-                    if (target_position_index == 2) {
-                        if (intake_position != Intake_Position.GROUND) intake_position = Intake_Position.GROUND;
-                    }
-                } else {
-                    if (intake_position != Intake_Position.IDLE) intake_position = Intake_Position.IDLE;
+
+
+                if (profile_done) {
+                    state = states.IDLE;
+                    break;
                 }
+
+                double dist = target_positions[target_position_index].getPose().dist(poseEstimate);
+                double heading_error = (target_positions[target_position_index].getPose().h - poseEstimate.h);
+
+                if (Math.abs(heading_error) > Math.PI) {
+                    heading_error = -Math.copySign(2 * Math.PI - Math.abs(heading_error), heading_error);
+                }
+
+
+                if (target_positions[target_position_index] != position.BASKET && dist < 5) {
+                    if (intake_position != Intake_Position.GROUND) intake_position = Intake_Position.GROUND;
+                    if (dist < 1 && heading_error < 0.1) {
+                        state = states.IDLE;
+                        break;
+                    }
+                } else if (target_rotation != rotation.UP2 && dist < 1) {
+                    target_rotation = rotation.UP2;
+                    if (heading_error < 0.05) {
+                        state = states.IDLE;
+                        break;
+                    }
+                }
+
                 break;
+
+
             case DEPOSITING:
+
+
                 if (we_have_a_scoring_element) {
                     if (extension_error < 2 || target_extension == extension.OUT) {
-                        if (rotation_error < 3 && target_rotation == rotation.UP2) {
-                            if (extension_error < 2 && target_extension == extension.OUT) {
-                                intake = .9;
+                        if (rotation_error < 10 && target_rotation == rotation.UP2) {
+                            if (extension_error < 1 && target_extension == extension.OUT) {
+                                intake = 1.0;
                             }
                             target_extension = extension.OUT;
                             intake_position = Intake_Position.BUCKET_BACKWARD;
@@ -126,12 +155,13 @@ public class TestAutoOp extends AutonomousOpMode {
                         } else if (extension_error < 3) {
                             target_rotation = rotation.IDLE;
                         }
-                    } else if (rotation_error < 3) {
+                    } else if (rotation_error < 22.5) {
                         target_position_index++;
                         state = states.MOVING;
                     }
 
                 }
+                break;
 
         }
 
@@ -143,17 +173,19 @@ public class TestAutoOp extends AutonomousOpMode {
         target_rotation = rotation.IDLE;
         target_extension = extension.IDLE;
         target_positions = new position[] {
-                position.IDLE,
-                position.NEXT,
-                position.IDLE
+                position.BASKET,
+                position.SAMPLE1,
+                position.BASKET,
+                position.SAMPLE2,
+                position.BASKET,
+                position.SAMPLE3,
+                position.BASKET
         };
         target_position_index = 0;
-        intake_position = Intake_Position.GROUND;
-        startPose = position.IDLE.getPose();
+        intake_position = Intake_Position.INIT;
+        startPose = position.START.getPose();
 
-        state = states.GRABBING;
-
-        start_time = clock.seconds();
+        state = states.MOVING;
 
     }
 }

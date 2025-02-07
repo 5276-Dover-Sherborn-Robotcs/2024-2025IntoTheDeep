@@ -37,13 +37,13 @@ public class DanDriveConstants {
 
     public static double BASE_MAX_EXTENSION = 38;
 
-    public static double Kg = 0.28; // x power at 0 degrees/ when sin(theta) is 1
+    public static double Kg = 0.3; // x power at 0 degrees/ when sin(theta) is 1
     public static double Kgl = 4;
     public static double Kl = 0.007; // tuned
 
     public static double Bx = -0.5;
 
-    public static double LATERAL_MULTIPLIER = 2;
+    public static double LATERAL_MULTIPLIER = 1.6;
 
     public static double SERVO_MULTIPLIER = 1800;
 

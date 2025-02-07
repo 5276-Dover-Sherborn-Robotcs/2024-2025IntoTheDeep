@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode.util
 
 import kotlin.math.PI
 import kotlin.math.hypot
+import kotlin.math.sqrt
 
 data class Pose2D(@JvmField val x: Double, @JvmField val y: Double, @JvmField val h: Double) {
     operator fun plus(p: Pose2D): Pose2D {
@@ -22,7 +23,7 @@ data class Pose2D(@JvmField val x: Double, @JvmField val y: Double, @JvmField va
     }
 
     // This is just a simple distance formula
-    fun dist(p: Pose2D) = hypot((p.x - x), (p.y - y))
+    fun dist(p: Pose2D) = sqrt(((p.x - x)*(p.x - x) + (p.y - y)*(p.y - y)))
 
     override fun hashCode(): Int {
         var result = x.hashCode()

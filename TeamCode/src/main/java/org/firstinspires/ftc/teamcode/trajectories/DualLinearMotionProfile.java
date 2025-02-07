@@ -17,7 +17,6 @@ import java.util.ArrayList;
 public class DualLinearMotionProfile implements MotionProfile {
 
     public Pose2D startPose, endPose;
-    public double p0 = 0;
     public double theta = 0;
     public double sin = 0, cos = 0;
     public double duration = 0;
@@ -136,9 +135,6 @@ public class DualLinearMotionProfile implements MotionProfile {
         x_max_normal = isTrajNormal(dx, MAX_VELOCITY, MAX_ACCELERATION);
         r_normal = isTrajNormal(dh, v_r_c_max, MAX_ROTATIONAL_ACCELERATION);
         r_max_normal = isTrajNormal(dh, MAX_ROTATIONAL_VELOCITY, MAX_ROTATIONAL_ACCELERATION);
-
-
-        p0 = Math.hypot(startPose.x, startPose.y);
 
 
         if (!(x_normal || r_normal)){
@@ -356,7 +352,7 @@ public class DualLinearMotionProfile implements MotionProfile {
             };
         }
         double x = 0;
-        double h = 0;
+        double h = startPose.h;
         double[] v = {0, 0};
         double[] a = {0, 0};
 
@@ -390,7 +386,7 @@ public class DualLinearMotionProfile implements MotionProfile {
         double theta = this.theta - h;
         double cos = Math.cos(theta), sin = Math.sin(theta);
         return new Pose2D[]{
-                new Pose2D(x * this.cos, x * this.sin, h).plus(startPose),
+                new Pose2D(x * this.cos + startPose.x, x * this.sin + startPose.y, h),
                 new Pose2D(v[0] * cos, v[0] * sin, v[1]),
                 new Pose2D(a[0] * cos, a[0] * sin, a[1])
         };

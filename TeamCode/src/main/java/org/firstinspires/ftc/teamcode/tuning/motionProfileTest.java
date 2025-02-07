@@ -31,9 +31,9 @@ public class motionProfileTest extends LinearOpMode {
     public static double PID_mult = 1;
 
     // PID Control constants to account for any error in position
-    public static double FORWARD_GAIN = 0.1, Xd = 0.015, Xi = 0.01; // 30% power at 50 inches error
-    public static double STRAFE_GAIN = 0.1, Yd = 0.015, Yi = 0.01;
-    public static double ANG_GAIN = .5, Hd = 0.2, Hi = 0.015;
+    public static double FORWARD_GAIN = 0.2, Xd = 0.01, Xi = 0.005; // 30% power at 50 inches error
+    public static double STRAFE_GAIN = 0.2, Yd = 0.01, Yi = 0.005;
+    public static double ANG_GAIN = 0.8, Hd = 0.09, Hi = 0.08;
 
     public double prev_error_x = 0, x_sum = 0;
     public double prev_error_y = 0, y_sum = 0; // some pid control
@@ -190,6 +190,8 @@ public class motionProfileTest extends LinearOpMode {
     }
 
     public boolean movePID(DualLinearMotionProfile profile) {
+
+        TelemetryPacket packet = new TelemetryPacket();
         // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
         Pose2D[] at_time = profile.get_state_at_time();
 
@@ -213,6 +215,9 @@ public class motionProfileTest extends LinearOpMode {
         double strafe = error_y * STRAFE_GAIN;
         double turn = error_h * ANG_GAIN;
 
+        packet.put("Forward P", forward);
+        packet.put("Strafe P", strafe);
+
         // I gains
 
         if (Math.abs(error_h) < 0.1) h_sum = 0;
@@ -229,14 +234,22 @@ public class motionProfileTest extends LinearOpMode {
         if (h_sum * error_h < 0) h_sum = 0;
         turn += h_sum * Hi;
 
+        packet.put("Forward I", forward);
+        packet.put("Strafe I", strafe);
+
         // D gains
         forward += (error_x - prev_error_x) / localizer.d_time * Xd;
         strafe += (error_y - prev_error_y) / localizer.d_time * Yd;
         turn += (error_h - prev_error_h) / localizer.d_time * Hd;
 
+        packet.put("Forward D", forward);
+        packet.put("Strafe D", strafe);
+
         // Rotate it
-        forward = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
-        strafe = forward * Math.sin(-poseEstimate.h) + strafe * Math.cos(-poseEstimate.h);
+        double forward2 = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
+        double strafe2 = forward * Math.sin(-poseEstimate.h) + strafe * Math.cos(-poseEstimate.h);
+        forward = forward2;
+        strafe = strafe2;
 
         // Feedforward control
         Pose2D vel = at_time[1];
@@ -260,8 +273,6 @@ public class motionProfileTest extends LinearOpMode {
         double TICKS_PER_INCH = 2000 / (4.8 / 2.54 * Math.PI);
 
         double[] current_velocity = localizer.getVelocity();
-
-        TelemetryPacket packet = new TelemetryPacket();
 
         packet.put("X Velocity", vel.x);
         packet.put("Measured X Velocity", current_velocity[0] / TICKS_PER_INCH);

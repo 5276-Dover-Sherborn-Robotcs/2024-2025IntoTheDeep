@@ -44,17 +44,17 @@ public abstract class AutonomousOpMode extends OpMode {
 
     RevColorSensorV3 colorSensor;
 
-    public static double FORWARD_GAIN = 0.2, Xd = 0.01, Xi = 0.008; // 30% power at 50 inches error
-    public static double STRAFE_GAIN = 0.2, Yd = 0.01, Yi = 0.008;
-    public static double ANG_GAIN = .6, Hd = 0.1, Hi = 0.05;
+    public static double FORWARD_GAIN = 0.2, Xd = 0.01, Xi = 0.005; // 30% power at 50 inches error
+    public static double STRAFE_GAIN = 0.2, Yd = 0.01, Yi = 0.005;
+    public static double ANG_GAIN = 0.8, Hd = 0.09, Hi = 0.08;
 
     public static double forward_weight = 0.75;
     public static double strafe_weight = 0.75;
     public static double turn_weight = 0.25;
 
-    public double prev_error_x = 0, x_sum = 0;
-    public double prev_error_y = 0, y_sum = 0; // some pid control
-    public double prev_error_h = 0, h_sum = 0;
+    public double prev_error_x = 0, x_sum = 0, x_limit = 25;
+    public double prev_error_y = 0, y_sum = 0, y_limit = 25; // some pid control
+    public double prev_error_h = 0, h_sum = 0, h_limit = 25;
 
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
@@ -65,7 +65,7 @@ public abstract class AutonomousOpMode extends OpMode {
         IDLE(0.0, 45, 0),
         BUCKET_FORWARD(0.0, -45.0, -115.0),
         BUCKET_BACKWARD(1.0, 75.0, 115.0),
-        GROUND(0.0, -20.0, 0.0),
+        GROUND(0.0, -17.0, 0.0),
         SPECIMEN_FORWARD(0.0, 0.0, 0.0);
 
         public final double roll;
@@ -94,7 +94,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public double min_rotation_power = 0.0;
     public double prev_rotation_error = 0, rotation_sum = 0;
     public static PIDCoefficients rotation_pidg = new PIDCoefficients(
-            .7/45, 0.0, 0.0
+            0.013, 0.0, 0.0
     );
 
     //Extension positions, in inches
@@ -236,6 +236,7 @@ public abstract class AutonomousOpMode extends OpMode {
         // Localizer
         localizer = new Localizer(hardwareMap, telemetry, startPose);
         localizer.setPoseEstimate(startPose);
+        poseEstimate = startPose;
 
         // Here, we iterate through each position we want to move to,
         ArrayList<DualLinearMotionProfile> temp_path = new ArrayList<>();
@@ -260,6 +261,8 @@ public abstract class AutonomousOpMode extends OpMode {
     @SuppressLint("DefaultLocale")
     @Override
     public void init_loop() {
+
+        we_have_a_scoring_element = checkForSample();
 
         telemetry.addLine("Ready");
 
@@ -355,7 +358,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
         if (error_h < -2 * Math.PI) error_h += 2 * Math.PI;
 
-        if ((2 * Math.PI - Math.abs(error_h)) < Math.abs(error_h)) {
+        if (Math.abs(error_h) < Math.PI) {
             error_h = -Math.copySign(2 * Math.PI - Math.abs(error_h), error_h);
         }
 
@@ -366,11 +369,12 @@ public abstract class AutonomousOpMode extends OpMode {
 
         // I gains
         // fun fact: strafe, forward, and turn... ARE DIFFERENT THINGS!!!
-        x_sum += error_x;
+        // we have a limit to prevent extreme windup, especially while its depositing in the bucket and it doesn't move properly
+        x_sum = Math.min(x_limit, Math.max(-x_limit, x_sum + error_x));
         forward += x_sum * Xi;
-        y_sum += error_y;
+        y_sum = Math.min(y_limit, Math.max(-y_limit, y_sum + error_y));
         strafe += y_sum * Yi;
-        h_sum += error_h;
+        h_sum = Math.min(h_limit, Math.max(-h_limit, h_sum + error_h));
         turn += h_sum * Hi;
 
         // D gains
@@ -385,8 +389,11 @@ public abstract class AutonomousOpMode extends OpMode {
 //        turn = weighed_control[2];
 
         // Rotate it
-        forward = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
-        strafe = forward * Math.sin(-poseEstimate.h) + strafe * Math.cos(-poseEstimate.h);
+        // Note: Make sure you use temp values, otherwise you can completely erase the PID response at certain angles
+        double forward2 = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
+        double strafe2 = forward * Math.sin(-poseEstimate.h) + strafe * Math.cos(-poseEstimate.h);
+        forward = forward2;
+        strafe = strafe2;
 
         // Feedforward control
         Pose2D vel = at_time[1];
@@ -448,7 +455,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public double rotatePID() {
 
         double error = target_rotation.getRotation() - arm_angle;
-        rotation_sum += error;
+        if (Math.abs(error) < 10) rotation_sum += error;
 
         double cos = Math.cos(Math.toRadians(arm_angle));
 
@@ -469,8 +476,7 @@ public abstract class AutonomousOpMode extends OpMode {
         }
 
         if (target_rotation.getRotation() == 0) {
-            if (Math.abs(error) >= 25) min_rotation_power = -0.2;
-            else min_rotation_power = 0;
+            if (error > 5) min_rotation_power = -.3;
         }
 
         arm_rot.setPower(min_rotation_power);
