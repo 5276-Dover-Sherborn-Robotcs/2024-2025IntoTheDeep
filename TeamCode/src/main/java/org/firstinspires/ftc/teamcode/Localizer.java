@@ -43,8 +43,8 @@ public class Localizer {
 
     public double current_time, previous_time, d_time = 0;
 
-    private double gx;
-    private double gy;
+    private double gx, x0;
+    private double gy, y0;
     private double heading;
     private final double heading_0;
 
@@ -74,6 +74,9 @@ public class Localizer {
 
         X.setDirection(Encoder.Direction.REVERSE);
         Y.setDirection(Encoder.Direction.REVERSE);
+
+        x0 = X.getCurrentPosition();
+        y0 = Y.getCurrentPosition();
 
         imu = hardwareMap.get(IMU.class, "imu");
 
@@ -117,10 +120,10 @@ public class Localizer {
         current_time = clock.seconds() - start_time;
         d_time  = current_time - previous_time;
 
-        double x = X.getCurrentPosition();
+        double x = X.getCurrentPosition() - x0;
         dX = x - old_X;
         old_X = x;
-        double y = Y.getCurrentPosition();
+        double y = Y.getCurrentPosition() - x0;
         dY = y - old_Y;
         old_Y = y;
 

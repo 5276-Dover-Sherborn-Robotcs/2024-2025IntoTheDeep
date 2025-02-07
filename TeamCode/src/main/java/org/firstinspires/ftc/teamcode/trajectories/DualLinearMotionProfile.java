@@ -4,8 +4,6 @@ import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ACCELERATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ROTATIONAL_ACCELERATION;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_ROTATIONAL_VELOCITY;
 import static org.firstinspires.ftc.teamcode.DanDriveConstants.MAX_VELOCITY;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.trackwidth;
-import static org.firstinspires.ftc.teamcode.DanDriveConstants.wheelbase;
 import static java.lang.Math.abs;
 import static java.lang.Math.sqrt;
 
@@ -17,10 +15,6 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 import java.util.ArrayList;
 
 public class DualLinearMotionProfile implements MotionProfile {
-
-    double pi = Math.PI;
-    double lx = wheelbase / 2;
-    double ly = trackwidth / 2;
 
     public Pose2D startPose, endPose;
     public double p0 = 0;
@@ -45,10 +39,8 @@ public class DualLinearMotionProfile implements MotionProfile {
         return trajectory2;
     }
 
-    public int currentSegment = 0;
     public ElapsedTime timer;
     public double startTime = -1;
-    public double t0;
 
     Telemetry telemetry;
 
@@ -133,6 +125,8 @@ public class DualLinearMotionProfile implements MotionProfile {
 
         if (Math.abs(dx) < 1e-3) dx = 0;
         if (Math.abs(dh) < 1e-2) dh = 0;
+
+        if (dx == 0 && dh == 0) new DualLinearMotionProfile(start, tel);
 
         h_direction = Math.signum(dh);
         dh = Math.abs(dh);
@@ -362,7 +356,7 @@ public class DualLinearMotionProfile implements MotionProfile {
             };
         }
         double x = 0;
-        double h = startPose.h;
+        double h = 0;
         double[] v = {0, 0};
         double[] a = {0, 0};
 

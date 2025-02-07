@@ -68,8 +68,8 @@ public class armTester extends LinearOpMode {
 
         arm_rot.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, pidf);
 
-        parallel = new Encoder(hardwareMap.get(DcMotorEx.class, "m1"));
-        perpendicular = new Encoder(hardwareMap.get(DcMotorEx.class, "m2"));
+        parallel = new Encoder(hardwareMap.get(DcMotorEx.class, "fl"));
+        perpendicular = new Encoder(hardwareMap.get(DcMotorEx.class, "fr"));
 
 
         telemetry.addLine("Ready");

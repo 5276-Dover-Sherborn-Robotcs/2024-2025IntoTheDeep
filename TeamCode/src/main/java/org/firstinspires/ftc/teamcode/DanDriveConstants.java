@@ -20,14 +20,14 @@ public class DanDriveConstants {
     public static double MAX_VELOCITY = 60;
     public static double MAX_ACCELERATION = MAX_VELOCITY;
 
-    public static double trackwidth = 15; // These values have been tuned (its weird ik (weight distribution))
-    public static double wheelbase = 15;
+    public static double trackwidth = 16; // These values have been tuned (its weird ik (weight distribution))
+    public static double wheelbase = 16;
 
     public static double MAX_ROTATIONAL_VELOCITY = 3.14;
     public static double MAX_ROTATIONAL_ACCELERATION = 3.14;
 
-    public static double Kv = 0.010; // found experimentally then kicked down, pid shouldn't be pushing not pulling
-    public static double Ka = 0.005;
+    public static double Kv = 0.01; // found experimentally then kicked down, pid shouldn't be pushing not pulling
+    public static double Ka = 0.0025;
     public static double Kp = 0;
 
     public static double INIT_ANGLE = 0.6;

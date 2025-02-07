@@ -44,9 +44,9 @@ public abstract class AutonomousOpMode extends OpMode {
 
     RevColorSensorV3 colorSensor;
 
-    public static double FORWARD_GAIN = 0.1, Xd = 0.015, Xi = 0.01; // 30% power at 50 inches error
-    public static double STRAFE_GAIN = 0.1, Yd = 0.015, Yi = 0.01;
-    public static double ANG_GAIN = .5, Hd = 0.2, Hi = 0.015;
+    public static double FORWARD_GAIN = 0.2, Xd = 0.01, Xi = 0.008; // 30% power at 50 inches error
+    public static double STRAFE_GAIN = 0.2, Yd = 0.01, Yi = 0.008;
+    public static double ANG_GAIN = .6, Hd = 0.1, Hi = 0.05;
 
     public static double forward_weight = 0.75;
     public static double strafe_weight = 0.75;
@@ -59,11 +59,13 @@ public abstract class AutonomousOpMode extends OpMode {
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
 
-    // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are local (global is overly complex), and seperate.
+    // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are local to the arm angle (global is overly complex), and separate.
     public enum Intake_Position {
-        IDLE(0.0, 135, 135),
-        BUCKET_FORWARD(1.0, -65.0, -45.0),
-        GROUND(0.0, -5.0, 0.0),
+        INIT(0.0, 135, 135),
+        IDLE(0.0, 45, 0),
+        BUCKET_FORWARD(0.0, -45.0, -115.0),
+        BUCKET_BACKWARD(1.0, 75.0, 115.0),
+        GROUND(0.0, -20.0, 0.0),
         SPECIMEN_FORWARD(0.0, 0.0, 0.0);
 
         public final double roll;
@@ -81,7 +83,7 @@ public abstract class AutonomousOpMode extends OpMode {
         }
     }
     public Intake_Position intake_position = null;
-    public Intake_Position old_intake_position = Intake_Position.IDLE;
+    public Intake_Position old_intake_position = Intake_Position.INIT;
     public double intake = 0.5; // This is the current power of the intake servos. 0.5 is not moving, 0.0 is one way, 1.0 is the other
 
     // Rotation positions, mostly just for a level of abstraction. Following that are a couple pid used things
@@ -103,7 +105,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public double min_extension_power = 0.0;
     public double prev_extension_error = 0, extension_sum = 0;
     public static PIDCoefficients extension_pidg = new PIDCoefficients(
-            0.6/5, 0.0, 0.0
+            0.12, 0.002, 0.01
     );
 
     // Positions the robot wants to be at
@@ -139,8 +141,8 @@ public abstract class AutonomousOpMode extends OpMode {
 
     // Status values for each PID system.
     public boolean profile_done;
-    public double rotate_error;
-    public double extend_error;
+    public double rotation_error;
+    public double extension_error;
     public double intake_error;
 
     NanoClock clock = NanoClock.system();
@@ -214,9 +216,9 @@ public abstract class AutonomousOpMode extends OpMode {
 
         arm_pitch.setDirection(Servo.Direction.REVERSE);
         arm_pitch.scaleRange(.5-0.225, .5+0.225);
-        arm_pitch.setPosition(intake_position.arm_pitch/135 + .5);
+        arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
         intake_pitch.scaleRange(.5-0.225, .5+0.225);
-        intake_pitch.setPosition(intake_position.intake_pitch/135 + .5);
+        intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
         intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
         intake_roll.setPosition(intake_position.roll);
 
@@ -253,10 +255,6 @@ public abstract class AutonomousOpMode extends OpMode {
 
         path = temp_path.toArray(new DualLinearMotionProfile[target_positions.length]);
 
-    }
-
-    public double angle_to_servo_position(double angle) {
-        return (angle / 135) / 2 + 0.5;
     }
 
     @SuppressLint("DefaultLocale")
@@ -314,25 +312,25 @@ public abstract class AutonomousOpMode extends OpMode {
         }
 
         if (old_intake_position != intake_position) {
-            arm_pitch.setPosition(intake_position.arm_pitch/135 + 0.5);
-            intake_pitch.setPosition(intake_position.intake_pitch/135 + 0.5);
+            arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
+            intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
             intake_roll.setPosition(intake_position.roll);
             old_intake_position = intake_position;
         }
 
         profile_done = movePID();
-        rotate_error = rotatePID();
-        if (state != states.GRABBING) extend_error = extendPID();
+        rotation_error = Math.abs(rotatePID());
+        if (state != states.GRABBING) extension_error = Math.abs(extendPID());
 //        intake_error = intakePID(); To be worked on
 
 
         telemetry.addData("Current Target Position", target_positions[target_position_index]);
         telemetry.addData("Current Extension", arm_extension);
-        telemetry.addData("Current Extension Error", extend_error);
+        telemetry.addData("Current Extension Error", extension_error);
         telemetry.addData("Current Target Extension", target_extension);
         telemetry.addData("Current Target Extension num", target_extension.getExtension());
         telemetry.addData("Current Rotation", arm_angle);
-        telemetry.addData("Current Rotation Error", rotate_error);
+        telemetry.addData("Current Rotation Error", rotation_error);
         telemetry.addData("Current Target Rotation", target_rotation);
         telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
 
@@ -354,6 +352,9 @@ public abstract class AutonomousOpMode extends OpMode {
         double error_x = poseTarget.x - poseEstimate.x;
         double error_y = poseTarget.y - poseEstimate.y;
         double error_h = poseTarget.h - poseEstimate.h;
+
+        if (error_h < -2 * Math.PI) error_h += 2 * Math.PI;
+
         if ((2 * Math.PI - Math.abs(error_h)) < Math.abs(error_h)) {
             error_h = -Math.copySign(2 * Math.PI - Math.abs(error_h), error_h);
         }
@@ -366,16 +367,10 @@ public abstract class AutonomousOpMode extends OpMode {
         // I gains
         // fun fact: strafe, forward, and turn... ARE DIFFERENT THINGS!!!
         x_sum += error_x;
-        y_sum += error_y;
-        if (Math.hypot(error_x, error_y) < 0.2) {
-            x_sum = 0;
-            y_sum = 0;
-        }
         forward += x_sum * Xi;
+        y_sum += error_y;
         strafe += y_sum * Yi;
-
         h_sum += error_h;
-        if (Math.abs(error_h) < 0.05) h_sum = 0;
         turn += h_sum * Hi;
 
         // D gains
@@ -384,10 +379,10 @@ public abstract class AutonomousOpMode extends OpMode {
         turn += (error_h - prev_error_h) / localizer.d_time * Hd;
 
         // Weigh it, such that turn does not take precedence
-        double[] weighed_control = weighedPID(forward, strafe, turn);
-        forward = weighed_control[0];
-        strafe = weighed_control[1];
-        turn = weighed_control[2];
+//        double[] weighed_control = weighedPID(forward, strafe, turn);
+//        forward = weighed_control[0];
+//        strafe = weighed_control[1];
+//        turn = weighed_control[2];
 
         // Rotate it
         forward = forward * Math.cos(-poseEstimate.h) - strafe * Math.sin(-poseEstimate.h);
@@ -418,7 +413,9 @@ public abstract class AutonomousOpMode extends OpMode {
         prev_error_y = error_y;
         prev_error_h = error_h;
 
-        boolean we_are_close_enough = (Math.hypot(error_x, error_y) < 0.5) && (Math.abs(error_h) < 0.05);
+        double[] vels = localizer.getVelocity();
+
+        boolean we_are_close_enough = (Math.abs(vels[0]) < 0.5 && Math.abs(vels[1]) < 0.5) && (Math.abs(error_h) < 0.1);
 
         return path[target_position_index].is_traj_done() && we_are_close_enough;
     }
@@ -500,18 +497,18 @@ public abstract class AutonomousOpMode extends OpMode {
         double d = (error - prev_extension_error) / localizer.d_time * extension_pidg.d;
 
         double g = Math.max(0, arm_extension * Kl * Math.sin(arm_angle));
-        if (rotate_error < 5 && target_rotation.getRotation() == 0) g = 0;
+        if (rotation_error < 5 && target_rotation.getRotation() == 0) g = 0;
 
         min_extension_power = p + i + d + g;
 
         if (Math.abs(error) < .5) extension_sum = 0;
 
-        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < .5) {
-            left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            right_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        }
+//        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < .5) {
+//            left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+//            right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+//            left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+//            right_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+//        }
 
         // 1 - log base 100 of rotate error. the larger the rotation error is, the slower it extends.
         min_extension_power *= rotation_slow;
@@ -561,27 +558,15 @@ public abstract class AutonomousOpMode extends OpMode {
 
          */
 
-        arm_pitch.setPosition(intake_position.arm_pitch/135 + .5);
-        intake_pitch.setPosition(intake_position.intake_pitch/135 + .5);
+        arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
+        intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
         intake_roll.setPosition(intake_position.roll);
 
     }
 
     public boolean checkForSample() {
 
-        double green = colorSensor.green();
-        double red = colorSensor.red();
-        double blue = colorSensor.blue();
-        double dist = colorSensor.getDistance(DistanceUnit.CM);
-
-        double green_red = green/red;
-        double green_blue = green/blue;
-
-        telemetry.addData("Green/Blue", green_blue);
-        telemetry.addData("Green/Red", green_red);
-        telemetry.addData("Distance", dist);
-
-        return (dist < 2) && (Math.abs(green_blue - 3.8) < .3) && (Math.abs(green_red - 1.25) < .3);
+        return (colorSensor.getDistance(DistanceUnit.CM) < 3);
 
     }
 

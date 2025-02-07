@@ -31,9 +31,9 @@ public class motionProfileTest extends LinearOpMode {
     public static double PID_mult = 1;
 
     // PID Control constants to account for any error in position
-    public static double FORWARD_GAIN = 0.1, Xd = 0.013, Xi = 0.0001; // 30% power at 50 inches error
-    public static double STRAFE_GAIN = 0.1, Yd = 0.013, Yi = 0;
-    public static double ANG_GAIN = 1.2, Hd = 0.2, Hi = 0;
+    public static double FORWARD_GAIN = 0.1, Xd = 0.015, Xi = 0.01; // 30% power at 50 inches error
+    public static double STRAFE_GAIN = 0.1, Yd = 0.015, Yi = 0.01;
+    public static double ANG_GAIN = .5, Hd = 0.2, Hi = 0.015;
 
     public double prev_error_x = 0, x_sum = 0;
     public double prev_error_y = 0, y_sum = 0; // some pid control
@@ -112,7 +112,7 @@ public class motionProfileTest extends LinearOpMode {
                     if (gamepad1.b) {
                         motionProfile = new DualLinearMotionProfile(
                                 startPose,
-                                new Pose2D(TEST_X, TEST_Y, TEST_H * Math.PI/180).plus(startPose),
+                                new Pose2D(TEST_X, TEST_Y, (TEST_H * Math.PI/180)).plus(startPose),
                                 telemetry);
                         motionProfile.start();
                         state = STATE.RUNNING;
@@ -137,6 +137,12 @@ public class motionProfileTest extends LinearOpMode {
                 case DONE:
                     break;
                 case RESET:
+
+                    fl.setPower(0);
+                    fr.setPower(0);
+                    bl.setPower(0);
+                    br.setPower(0);
+
                     ElapsedTime timer = new ElapsedTime();
                     while (timer.time() < 3) {
                         telemetry.update();
@@ -196,6 +202,8 @@ public class motionProfileTest extends LinearOpMode {
         double error_y = poseTarget.y - poseEstimate.y;
         double error_h = poseTarget.h - poseEstimate.h;
 
+        if (error_h < -2 * Math.PI) error_h += 2 * Math.PI;
+
         if ((2 * Math.PI - Math.abs(error_h)) < Math.abs(error_h)) {
             error_h = -Math.copySign(2 * Math.PI - Math.abs(error_h), error_h);
         }
@@ -211,13 +219,13 @@ public class motionProfileTest extends LinearOpMode {
         if (Math.abs(error_x) < 0.1) x_sum = 0;
         if (Math.abs(error_y) < 0.1) y_sum = 0;
 
-        x_sum += error_x;
+        x_sum += error_x * PID_mult;
         if (x_sum * error_x < 0) x_sum = 0;
         forward += x_sum * Xi;
-        y_sum += error_y;
+        y_sum += error_y * PID_mult;
         if (y_sum * error_y < 0) y_sum = 0;
         strafe += y_sum * Yi;
-        h_sum += error_h;
+        h_sum += error_h * PID_mult;
         if (h_sum * error_h < 0) h_sum = 0;
         turn += h_sum * Hi;
 
