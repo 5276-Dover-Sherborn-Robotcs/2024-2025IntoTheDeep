@@ -20,8 +20,8 @@ public class DanDriveConstants {
     public static double MAX_VELOCITY = 60;
     public static double MAX_ACCELERATION = MAX_VELOCITY;
 
-    public static double trackwidth = 16; // These values have been tuned (its weird ik (weight distribution))
-    public static double wheelbase = 16;
+    public static double trackwidth = 17; // These values have been tuned (its weird ik (weight distribution))
+    public static double wheelbase = 17;
 
     public static double MAX_ROTATIONAL_VELOCITY = 3.14;
     public static double MAX_ROTATIONAL_ACCELERATION = 3.14;

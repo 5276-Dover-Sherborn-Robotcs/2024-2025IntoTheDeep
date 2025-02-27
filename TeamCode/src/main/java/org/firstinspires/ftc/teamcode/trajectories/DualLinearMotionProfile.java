@@ -183,7 +183,7 @@ public class DualLinearMotionProfile implements MotionProfile {
             }
 
 
-        } else if (!x_normal && r_normal) {
+        } else if (!x_normal) {
             swapped = true;
             double dt = sqrt(dx / MAX_ACCELERATION);
             if (r_max_normal) {
@@ -356,15 +356,15 @@ public class DualLinearMotionProfile implements MotionProfile {
         double[] v = {0, 0};
         double[] a = {0, 0};
 
-        for (int i = 0; i < trajectory2.length; i++) {
+        double t0 = 0;
 
-            double[] segment = trajectory2[i];
+        for (double[] segment : trajectory2) {
 
-            double dt = segment[2] - ((i > 0) ? trajectory2[i-1][2] : 0);
+            double dt = segment[2] - t0;
 
             if (time < segment[2]) {
 
-                time -= ((i > 0) ? trajectory2[i-1][2] : 0);
+                time -= t0;
 
                 x += v[0] * time + .5 * segment[0] * time * time;
                 h += v[1] * time + .5 * segment[1] * time * time;
@@ -381,6 +381,8 @@ public class DualLinearMotionProfile implements MotionProfile {
             v[1] += segment[1] * dt;
             a[0] = segment[0];
             a[1] = segment[1];
+
+            t0 = segment[2];
         }
 
         double theta = this.theta - h;

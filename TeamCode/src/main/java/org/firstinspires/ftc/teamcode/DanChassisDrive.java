@@ -36,7 +36,7 @@ public class DanChassisDrive extends LinearOpMode {
     public double arm_extension = 0;
     public double arm_extension_percentage = 0;
 
-    DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend, climbing_arm_motor;
+    DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend, climbing_bar_motor;
 
     Servo intake_left, intake_right, intake_pitch, intake_roll, arm_pitch;
 
@@ -47,7 +47,7 @@ public class DanChassisDrive extends LinearOpMode {
     ElapsedTime timer;
 
     // Arm Rotation control
-    double[] arm_positions = {INIT_ANGLE, 75, 90};
+    double[] arm_positions = {INIT_ANGLE, 75, 90, 100};
     int current_arm_position_index = 0;
 
     // Intake rotation control
@@ -115,18 +115,23 @@ public class DanChassisDrive extends LinearOpMode {
         right_extend.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         right_extend.setDirection(DcMotorSimple.Direction.REVERSE);
 
+        climbing_bar_motor = hardwareMap.get(DcMotorEx.class, "bar");
+
+        climbing_bar_motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        climbing_bar_motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
         // two pitch, one roll :D
         arm_pitch = hardwareMap.get(Servo.class, "arm_pitch");
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
         arm_pitch.setDirection(Servo.Direction.REVERSE);
-        arm_pitch.scaleRange(.5-0.225, .5+0.225);
+        arm_pitch.scaleRange(0, 0.375);
         arm_pitch.setPosition(1.0);
-        intake_pitch.scaleRange(.5-0.225, .5+0.225);
+        intake_pitch.scaleRange(0, 0.45);
         intake_pitch.setPosition(1.0);
         intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
-        intake_roll.setPosition(1.0);
+        intake_roll.setPosition(0.0);
 
         intake_left = hardwareMap.get(Servo.class, "left");
         intake_right = hardwareMap.get(Servo.class, "right");
@@ -176,13 +181,17 @@ public class DanChassisDrive extends LinearOpMode {
 
             if (gamepad2.dpad_up) {
                 if (!arm_rot_input) {
-                    current_arm_position_index = Math.min(current_arm_position_index + 1, arm_positions.length - 1);
+                    current_arm_position_index = Math.min(current_arm_position_index + 1, 2);
                     Ki_sum = 0;
                 }
             } else if (gamepad2.dpad_down) {
                 if (!arm_rot_input) {
                     current_arm_position_index = Math.max(current_arm_position_index - 1, 0);
                     Ki_sum = 0;
+                    arm_pitch_pos = 1.0;
+                    arm_pitch.setPosition(1.0);
+                    intake_pitch_pos = 1.0;
+                    intake_pitch.setPosition(1.0);
                 }
             }
 
@@ -247,16 +256,16 @@ public class DanChassisDrive extends LinearOpMode {
             intake_pitch_pos = Math.min(1.0, Math.max(0, intake_pitch_pos));
 
             if (gamepad2.a) {
-                arm_pitch_pos = -35./270 + .5;
+                arm_pitch_pos = -15./270 + .5;
                 intake_pitch_pos = .5;
                 intake_roll_pos = 0;
                 intake_roll.setPosition(intake_roll_pos);
             } else if (gamepad2.y) {
-                arm_pitch_pos = 1;
-                intake_pitch_pos = 1;
+                arm_pitch_pos = 10./270 +.5;
+                intake_pitch_pos = .5;
             }else if (gamepad2.x) {
                 if (specimen) {
-                    arm_pitch_pos = -arm_angle/270 + .5;
+                    arm_pitch_pos = -75./270 + .5;
                     intake_pitch_pos = .5;
                 } else {
                     arm_pitch_pos = .4;
@@ -270,11 +279,11 @@ public class DanChassisDrive extends LinearOpMode {
                 double y1 = Math.sin(Math.toRadians((arm_pitch_pos - 0.5) * 270)) * 4.72;
                 double y2 = Math.sin(Math.toRadians((intake_pitch_pos - 0.5) * 270)) * 5.89;
                 telemetry.addData("Y position of intake", y1 + y2);
-                if (y1 + y2 < -3) {
-                    if (y1 > -3) {
-                        intake_pitch_pos = Math.asin((-3 - y1) / 5.89)/270 + .5;
+                if (y1 + y2 < -2.5) {
+                    if (y1 > -2.5) {
+                        intake_pitch_pos = Math.asin((-2.5 - y1) / 5.89)/270 + .5;
                     } else {
-                        arm_pitch_pos = Math.asin(-3 / 4.78)/270 + .5;
+                        arm_pitch_pos = Math.asin(-2.5 / 4.78)/270 + .5;
                         intake_pitch_pos = 0.5;
                     }
                 }
@@ -287,7 +296,9 @@ public class DanChassisDrive extends LinearOpMode {
 
             telemetry.addData("Specimen Mode", specimen);
 
-            arm_pitch.setPosition(arm_pitch_pos);
+            arm_pitch_pos = Math.min((1.0-.16), arm_pitch_pos);
+
+            arm_pitch.setPosition(arm_pitch_pos + 0.03 * arm_extension_percentage);
             intake_pitch.setPosition(intake_pitch_pos);
 
             prev_time = time;
@@ -298,17 +309,21 @@ public class DanChassisDrive extends LinearOpMode {
             }
 
 
-            if (gamepad1.a && !climbing_bar) {
+            if (gamepad1.left_bumper && !climbing_bar) {
                 climbing_bar_power = 0.2 - climbing_bar_power;
-                // climbing_bar_motor.setPower(climbing_bar_power);
             }
-            climbing_bar = gamepad1.a;
+            climbing_bar = gamepad1.left_bumper;
 
+            climbing_bar_motor.setPower(!gamepad1.right_bumper ? climbing_bar_power : 0.5);
 
             if (gamepad1.x && !clamping) {
                 clamped = !clamped;
             }
             clamping = gamepad1.x;
+
+            if (gamepad1.b) {
+                current_arm_position_index = 3;
+            }
 
 
             prev_time = timer.time();
@@ -392,6 +407,10 @@ public class DanChassisDrive extends LinearOpMode {
         double d = (error - prev_error) * arm_rot_d;
 
         double g = Math.cos(Math.toRadians(arm_angle)) * Kg;
+
+        if (current_arm_position_index == 3) {
+            g = -g;
+        }
 
         double min_rot_power = p + i + d + g;
 

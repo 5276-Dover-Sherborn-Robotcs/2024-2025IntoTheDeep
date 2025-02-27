@@ -26,6 +26,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.PIDCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.teamcode.trajectories.DualLinearMotionProfile;
@@ -33,10 +34,32 @@ import org.firstinspires.ftc.teamcode.util.Pose2D;
 
 import java.util.ArrayList;
 
+
 @Config
 public abstract class AutonomousOpMode extends OpMode {
 
-    abstract public void mainLoop();
+    /*
+
+        Autonomous Op Mode 101:
+
+        You have two methods you *need* to define, variable_init and main_loop. variable_init is where you define all the target locations,
+        the initial conditions, and any other custom logic whatnots you want. main_loop is your logic, this gets run every single loop. Please keep away
+        from any while loops.
+
+        There are 4 systems you can control:
+
+        - Position
+        - Arm Rotation
+        - Arm Extension
+        - Intake
+
+        The first 3 each have there own PID controllers, the Intake is controlled entirely by servos. For the next until I say so, I will only be talking
+        about the first 3.
+
+        Each of the 3 systems provides some sort of feedback. Specifically, position has a boolean variable as to whether it considers itself to be "done",
+        and both the arm systems return the amount of error (rotation is in degrees, extension is in inches).
+
+     */
 
     DcMotorEx fl, fr, bl, br, arm_rot, left_extend, right_extend;
 
@@ -52,21 +75,23 @@ public abstract class AutonomousOpMode extends OpMode {
     public static double strafe_weight = 0.75;
     public static double turn_weight = 0.25;
 
-    public double prev_error_x = 0, x_sum = 0, x_limit = 25;
-    public double prev_error_y = 0, y_sum = 0, y_limit = 25; // some pid control
-    public double prev_error_h = 0, h_sum = 0, h_limit = 25;
+    public double prev_error_x = 0, x_sum = 0, x_limit = 5;
+    public double prev_error_y = 0, y_sum = 0, y_limit = 5; // some pid control
+    public double prev_error_h = 0, h_sum = 0, h_limit = 3;
 
     // this should be pretty self explanatory. Its called that so I can say "if we have a scoring element" lmao
     public boolean we_have_a_scoring_element = false;
 
     // These are intake positions. They assume that we have our goofy 4 bar arm setup. Pitches are local to the arm angle (global is overly complex), and separate.
     public enum Intake_Position {
-        INIT(0.0, 135, 135),
+        INIT(0.0, 1.0, 1),
+        ZERO(0, 0, 0),
         IDLE(0.0, 45, 0),
-        BUCKET_FORWARD(0.0, -45.0, -115.0),
-        BUCKET_BACKWARD(1.0, 75.0, 115.0),
-        GROUND(0.0, -17.0, 0.0),
-        SPECIMEN_FORWARD(0.0, 0.0, 0.0);
+        BUCKET_FORWARD(0.0, 0.4, 0.07),
+        PRE_BUCKET_BACKWARD(1.0, 0.8, 0.93),
+        BUCKET_BACKWARD(1.0, 1.0, 1),
+        GROUND(0.0, 0.53, 0.5),
+        SPECIMEN_FORWARD(0.0, 0.27, 0.5);
 
         public final double roll;
         public final double arm_pitch;
@@ -74,12 +99,8 @@ public abstract class AutonomousOpMode extends OpMode {
 
         Intake_Position(double roll, double pitch1, double pitch2) {
             this.roll = roll;
-            this.arm_pitch = pitch1;
-            if (Math.abs(pitch2 - pitch1) > 135) {
-                this.intake_pitch = Math.copySign(135, pitch2 - pitch1);
-            } else {
-                this.intake_pitch = pitch2;
-            }
+            this.arm_pitch = Math.min((1-1/6.), pitch1);
+            this.intake_pitch = pitch2;
         }
     }
     public Intake_Position intake_position = null;
@@ -105,7 +126,7 @@ public abstract class AutonomousOpMode extends OpMode {
     public double min_extension_power = 0.0;
     public double prev_extension_error = 0, extension_sum = 0;
     public static PIDCoefficients extension_pidg = new PIDCoefficients(
-            0.12, 0.002, 0.01
+            0.14, 0.002, 0.01
     );
 
     // Positions the robot wants to be at
@@ -148,6 +169,8 @@ public abstract class AutonomousOpMode extends OpMode {
     NanoClock clock = NanoClock.system();
 
     abstract public void variable_init();
+
+    abstract public void main_loop();
 
     @Override
     public void init() {
@@ -213,14 +236,13 @@ public abstract class AutonomousOpMode extends OpMode {
         intake_pitch = hardwareMap.get(Servo.class, "intake_pitch");
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
-
         arm_pitch.setDirection(Servo.Direction.REVERSE);
-        arm_pitch.scaleRange(.5-0.225, .5+0.225);
-        arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
-        intake_pitch.scaleRange(.5-0.225, .5+0.225);
-        intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
+        arm_pitch.scaleRange(0, 0.375);
+        arm_pitch.setPosition(1.0);
+        intake_pitch.scaleRange(0, 0.45);
+        intake_pitch.setPosition(1.0);
         intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
-        intake_roll.setPosition(intake_position.roll);
+        intake_roll.setPosition(0.0);
 
         intake_left = hardwareMap.get(Servo.class, "left");
         intake_right = hardwareMap.get(Servo.class, "right");
@@ -276,6 +298,10 @@ public abstract class AutonomousOpMode extends OpMode {
         // start the first motion profile
         path[0].start();
 
+        arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
+        intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
+        intake_roll.setPosition(intake_position.roll);
+
     }
 
     @Override
@@ -283,7 +309,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
         intake = 0.5;
 
-        mainLoop();
+        main_loop();
 
         update_things();
 
@@ -315,7 +341,7 @@ public abstract class AutonomousOpMode extends OpMode {
         }
 
         if (old_intake_position != intake_position) {
-            arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
+            arm_pitch.setPosition(intake_position.arm_pitch/225 + .6);
             intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
             intake_roll.setPosition(intake_position.roll);
             old_intake_position = intake_position;
@@ -324,18 +350,18 @@ public abstract class AutonomousOpMode extends OpMode {
         profile_done = movePID();
         rotation_error = Math.abs(rotatePID());
         if (state != states.GRABBING) extension_error = Math.abs(extendPID());
-//        intake_error = intakePID(); To be worked on
-
-
-        telemetry.addData("Current Target Position", target_positions[target_position_index]);
-        telemetry.addData("Current Extension", arm_extension);
-        telemetry.addData("Current Extension Error", extension_error);
-        telemetry.addData("Current Target Extension", target_extension);
-        telemetry.addData("Current Target Extension num", target_extension.getExtension());
-        telemetry.addData("Current Rotation", arm_angle);
-        telemetry.addData("Current Rotation Error", rotation_error);
-        telemetry.addData("Current Target Rotation", target_rotation);
-        telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
+////        intake_error = intakePID(); To be worked on
+//
+//
+//        telemetry.addData("Current Target Position", target_positions[target_position_index]);
+//        telemetry.addData("Current Extension", arm_extension);
+//        telemetry.addData("Current Extension Error", extension_error);
+//        telemetry.addData("Current Target Extension", target_extension);
+//        telemetry.addData("Current Target Extension num", target_extension.getExtension());
+//        telemetry.addData("Current Rotation", arm_angle);
+//        telemetry.addData("Current Rotation Error", rotation_error);
+//        telemetry.addData("Current Target Rotation", target_rotation);
+//        telemetry.addData("Current Target Rotation num", target_rotation.getRotation());
 
         telemetry.update();
 
@@ -358,7 +384,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
         if (error_h < -2 * Math.PI) error_h += 2 * Math.PI;
 
-        if (Math.abs(error_h) < Math.PI) {
+        if (Math.abs(error_h) > Math.PI) {
             error_h = -Math.copySign(2 * Math.PI - Math.abs(error_h), error_h);
         }
 
@@ -370,11 +396,11 @@ public abstract class AutonomousOpMode extends OpMode {
         // I gains
         // fun fact: strafe, forward, and turn... ARE DIFFERENT THINGS!!!
         // we have a limit to prevent extreme windup, especially while its depositing in the bucket and it doesn't move properly
-        x_sum = Math.min(x_limit, Math.max(-x_limit, x_sum + error_x));
+        x_sum = Range.clip(x_sum + error_x, -x_limit, x_limit);
         forward += x_sum * Xi;
-        y_sum = Math.min(y_limit, Math.max(-y_limit, y_sum + error_y));
+        y_sum = Range.clip(y_sum + error_y, -y_limit, y_limit);
         strafe += y_sum * Yi;
-        h_sum = Math.min(h_limit, Math.max(-h_limit, h_sum + error_h));
+        h_sum = Range.clip(h_sum + error_h,-h_limit, h_limit);
         turn += h_sum * Hi;
 
         // D gains
@@ -383,6 +409,7 @@ public abstract class AutonomousOpMode extends OpMode {
         turn += (error_h - prev_error_h) / localizer.d_time * Hd;
 
         // Weigh it, such that turn does not take precedence
+        // Might be pointless, since I had screwed up the next step, all prior testing isn't representative of the actual system
 //        double[] weighed_control = weighedPID(forward, strafe, turn);
 //        forward = weighed_control[0];
 //        strafe = weighed_control[1];
@@ -507,7 +534,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
         min_extension_power = p + i + d + g;
 
-        if (Math.abs(error) < .5) extension_sum = 0;
+        if (Math.abs(error) < 1) extension_sum = 0;
 
 //        if (error - prev_extension_error < .1 && target_extension.getExtension() == 0 && Math.abs(error) > 0.2 && Math.abs(error) < .5) {
 //            left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -556,17 +583,14 @@ public abstract class AutonomousOpMode extends OpMode {
 
     }
 
-    public void intakeControl() {
+    public void resetMotors() {
 
-        /*
-
-        There does exist a maximum difference between the arm pitch and the intake pitch, about +- 135 degrees (NON SYMMETRICAL, FIND IT)
-
-         */
-
-        arm_pitch.setPosition(intake_position.arm_pitch/270 + .5);
-        intake_pitch.setPosition(intake_position.intake_pitch/270 + .5);
-        intake_roll.setPosition(intake_position.roll);
+        arm_rot.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        left_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        right_extend.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        arm_rot.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        left_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        right_extend.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
     }
 

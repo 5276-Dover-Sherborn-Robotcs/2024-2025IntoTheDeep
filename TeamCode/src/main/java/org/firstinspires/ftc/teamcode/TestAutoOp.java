@@ -9,10 +9,14 @@ public class TestAutoOp extends AutonomousOpMode {
 
     public enum position implements Position {
         START(new Pose2D(-16.5, -12, -Math.PI/2)),
+
+        // Going up to it backwards :D
         BASKET(new Pose2D(-3, 3, -Math.PI/4)),
-        SAMPLE1(new Pose2D(1.5, 0.5, 0)),
-        SAMPLE2(new Pose2D(1.5, 10.5, 0)),
-        SAMPLE3(new Pose2D(9, 8, Math.PI/4));
+
+        // All sample positions are the middle  of the close side
+        SAMPLE1(new Pose2D(1.5, 0.5, 0)), // First sample is at (21.5, 0.5)
+        SAMPLE2(new Pose2D(1.5, 10.5, 0)), // Second sample is at (21.5, 10.5)
+        SAMPLE3(new Pose2D(1.5, 10.5, Math.atan2(10, 20))); // Third sample is at (21.5, 20.5)
 
         public final Pose2D pose;
 
@@ -26,8 +30,7 @@ public class TestAutoOp extends AutonomousOpMode {
     }
     public enum rotation implements Rotation {
         IDLE(0),
-        UP(75.0),
-        UP2(90);
+        UP(90);
 
         public final double rot;
 
@@ -55,7 +58,7 @@ public class TestAutoOp extends AutonomousOpMode {
     }
 
     @Override
-    public void mainLoop() {
+    public void main_loop() {
 
         we_have_a_scoring_element = checkForSample();
 
@@ -115,12 +118,13 @@ public class TestAutoOp extends AutonomousOpMode {
 
                 if (target_positions[target_position_index] != position.BASKET && dist < 5) {
                     if (intake_position != Intake_Position.GROUND) intake_position = Intake_Position.GROUND;
+                    if (dist < 3) resetMotors();
                     if (dist < 1 && heading_error < 0.1) {
                         state = states.IDLE;
                         break;
                     }
-                } else if (target_rotation != rotation.UP2 && dist < 1) {
-                    target_rotation = rotation.UP2;
+                } else if (target_rotation != rotation.UP && dist < 1) {
+                    target_rotation = rotation.UP;
                     if (heading_error < 0.05) {
                         state = states.IDLE;
                         break;
@@ -134,22 +138,24 @@ public class TestAutoOp extends AutonomousOpMode {
 
 
                 if (we_have_a_scoring_element) {
-                    if (extension_error < 2 || target_extension == extension.OUT) {
-                        if (rotation_error < 10 && target_rotation == rotation.UP2) {
-                            if (extension_error < 1 && target_extension == extension.OUT) {
+                    if (rotation_error < 10 && target_rotation == rotation.UP) {
+                        if (target_extension == extension.OUT) {
+                            if (extension_error < 1) {
                                 intake = 1.0;
+                            } else if (extension_error < 12) {
+                                intake_position = Intake_Position.BUCKET_BACKWARD;
                             }
+                        } else {
                             target_extension = extension.OUT;
-                            intake_position = Intake_Position.BUCKET_BACKWARD;
-
                         }
-                        target_rotation = rotation.UP2;
+
                     }
+                    target_rotation = rotation.UP;
                 } else {
                     if (intake_position == Intake_Position.BUCKET_BACKWARD) {
                         intake_position = Intake_Position.IDLE;
                     }
-                    if (target_rotation == rotation.UP2) {
+                    if (target_rotation == rotation.UP) {
                         if (target_extension == extension.OUT) {
                             target_extension = extension.IDLE;
                         } else if (extension_error < 3) {

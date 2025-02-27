@@ -24,6 +24,9 @@ public class intakeTesting extends LinearOpMode {
     double arm_pitch_pos = 1.0;
     double intake_pitch_pos = 1.0;
 
+    public static double init_arm_pitch = 1.0;
+    public static double init_intake_pitch = 1.0;
+
     @Override
     public void runOpMode() {
 
@@ -33,10 +36,10 @@ public class intakeTesting extends LinearOpMode {
         intake_roll = hardwareMap.get(Servo.class, "intake_roll");
 
         arm_pitch.setDirection(Servo.Direction.REVERSE);
-        arm_pitch.scaleRange(.5-0.225, .5+0.225);
-        arm_pitch.setPosition(1.0);
-        intake_pitch.scaleRange(.5-0.225, .5+0.225);
-        intake_pitch.setPosition(1.0);
+        arm_pitch.scaleRange(0, 0.375);
+        arm_pitch.setPosition(init_arm_pitch);
+        intake_pitch.scaleRange(0, 0.45);
+        intake_pitch.setPosition(init_intake_pitch);
         intake_roll.scaleRange(1/6.0 - .025, 5/6.0 + .025);
         intake_roll.setPosition(1.0);
 

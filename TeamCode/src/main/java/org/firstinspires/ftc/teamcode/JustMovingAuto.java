@@ -70,7 +70,7 @@ public class JustMovingAuto extends AutonomousOpMode {
     }
 
     @Override
-    public void mainLoop() {
+    public void main_loop() {
 
         switch (state) {
             case IDLE:
