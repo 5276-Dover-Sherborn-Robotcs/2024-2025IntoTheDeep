@@ -269,8 +269,7 @@ public abstract class AutonomousOpMode extends OpMode {
             temp_path.add(
                     new DualLinearMotionProfile(
                             current_pose,
-                            target_pose,
-                            telemetry
+                            target_pose
                     )
             );
             current_pose = target_pose;
@@ -371,7 +370,7 @@ public abstract class AutonomousOpMode extends OpMode {
 
     public boolean movePID() {
         // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
-        Pose2D[] at_time = path[target_position_index].get_state_at_time();
+        Pose2D[] at_time = path[target_position_index].getEverything();
 
         Pose2D poseTarget = at_time[0];
 

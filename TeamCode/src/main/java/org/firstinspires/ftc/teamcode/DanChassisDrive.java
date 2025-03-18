@@ -336,13 +336,7 @@ public class DanChassisDrive extends LinearOpMode {
 
     public boolean checkForSample() {
 
-        double green = colorSensor.green();
-        double red = colorSensor.red();
-        double blue = colorSensor.blue();
         double dist = colorSensor.getDistance(DistanceUnit.CM);
-
-        double green_red = green/red;
-        double green_blue = green/blue;
 
         return (dist < 3);
 

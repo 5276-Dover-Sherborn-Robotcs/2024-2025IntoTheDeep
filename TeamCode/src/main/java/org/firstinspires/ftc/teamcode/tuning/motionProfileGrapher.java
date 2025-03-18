@@ -39,8 +39,7 @@ public class motionProfileGrapher extends LinearOpMode {
 
         motionProfile = new DualLinearMotionProfile(
                 new Pose2D(0, 0, 0),
-                new Pose2D(200, 200, Math.PI * 2),
-                telemetry);
+                new Pose2D(200, 200, Math.PI * 2));
 
         while (opModeInInit()) {
             telemetry.addLine("Localizer ready");
@@ -61,9 +60,9 @@ public class motionProfileGrapher extends LinearOpMode {
 
                     break;
                 case RUNNING:
-                    Pose2D pos = motionProfile.traj_pos_time();
-                    Pose2D vel = motionProfile.traj_vel_time();
-                    Pose2D accel = motionProfile.traj_acc_time();
+                    Pose2D pos = motionProfile.trajectoryPosition();
+                    Pose2D vel = motionProfile.trajectoryVelocity();
+                    Pose2D accel = motionProfile.trajectoryAcceleration();
 
                     dashboard.sendTelemetryPacket(getTelemetryPacket(pos, vel, accel));
 

@@ -13,10 +13,10 @@ public interface MotionProfile {
     double[][] getTrajectory();
     void start();
     void end();
-    Pose2D[] get_state_at_time();
-    Pose2D traj_pos_time();
-    Pose2D traj_vel_time();
-    Pose2D traj_acc_time();
+    Pose2D[] getEverything();
+    Pose2D trajectoryPosition();
+    Pose2D trajectoryVelocity();
+    Pose2D trajectoryAcceleration();
     boolean is_traj_done();
 
 

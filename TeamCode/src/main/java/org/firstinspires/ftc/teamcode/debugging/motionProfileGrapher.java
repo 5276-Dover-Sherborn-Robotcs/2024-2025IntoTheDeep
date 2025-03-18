@@ -56,7 +56,7 @@ public class motionProfileGrapher extends LinearOpMode {
                         profile = new LinearMotionProfile(new Pose2D(0, 0, 0), new Pose2D(DX, DY, DH*Math.PI/180), telemetry);
                         break;
                     case DualLinear:
-                        profile = new DualLinearMotionProfile(new Pose2D(0, 0, 0), new Pose2D(DX, DY, DH*Math.PI/180), telemetry);
+                        profile = new DualLinearMotionProfile(new Pose2D(0, 0, 0), new Pose2D(DX, DY, DH*Math.PI/180));
                         break;
                 }
 
@@ -69,7 +69,7 @@ public class motionProfileGrapher extends LinearOpMode {
 
                 while (!profile.is_traj_done()) {
 
-                    Pose2D[] forward = profile.get_state_at_time();
+                    Pose2D[] forward = profile.getEverything();
 
                     Pose2D position = forward[0];
                     Pose2D velocity = forward[1];

@@ -77,7 +77,7 @@ public class LinearMotionProfile implements MotionProfile {
     }
 
     @Override
-    public Pose2D[] get_state_at_time() {
+    public Pose2D[] getEverything() {
 
         double time = timer.time();
         double x0 = 0;
@@ -102,7 +102,7 @@ public class LinearMotionProfile implements MotionProfile {
 
     }
 
-    public Pose2D traj_pos_time() {
+    public Pose2D trajectoryPosition() {
         double time = timer.time();
         double x0 = 0;
         for (MotionSegment segment : trajectory) {
@@ -117,7 +117,7 @@ public class LinearMotionProfile implements MotionProfile {
         return new Pose2D(x0 * cos, x0 * sin, 0);
     }
 
-    public Pose2D traj_vel_time() {
+    public Pose2D trajectoryVelocity() {
         double time = timer.time();
         double v0 = 0;
         for (MotionSegment segment : trajectory) {
@@ -131,7 +131,7 @@ public class LinearMotionProfile implements MotionProfile {
         return new Pose2D(v0 * cos, v0 * sin, 0);
     }
 
-    public Pose2D traj_acc_time() {
+    public Pose2D trajectoryAcceleration() {
         double time = timer.time();
         double a = 0;
         for (MotionSegment segment : trajectory) {

@@ -65,7 +65,7 @@ public class motionProfileTest extends LinearOpMode {
 
         localizer = new Localizer(hardwareMap, telemetry, startPose);
 
-        motionProfile = new DualLinearMotionProfile(telemetry);
+        motionProfile = new DualLinearMotionProfile();
 
         fl = hardwareMap.get(DcMotorEx.class, "fl");
         fr = hardwareMap.get(DcMotorEx.class, "fr");
@@ -112,16 +112,14 @@ public class motionProfileTest extends LinearOpMode {
                     if (gamepad1.b) {
                         motionProfile = new DualLinearMotionProfile(
                                 startPose,
-                                new Pose2D(TEST_X, TEST_Y, (TEST_H * Math.PI/180)).plus(startPose),
-                                telemetry);
+                                new Pose2D(TEST_X, TEST_Y, (TEST_H * Math.PI/180)).plus(startPose));
                         motionProfile.start();
                         state = STATE.RUNNING;
                     }
                     if (gamepad1.a) {
                         motionProfile = new DualLinearMotionProfile(
                                 startPose,
-                                new Pose2D(TEST_X, TEST_Y, TEST_H * Math.PI/180),
-                                telemetry);
+                                new Pose2D(TEST_X, TEST_Y, TEST_H * Math.PI/180));
                         motionProfile.start();
                         state = STATE.RUNNING;
                     }
@@ -151,7 +149,7 @@ public class motionProfileTest extends LinearOpMode {
                     state = STATE.IDLE;
                     startPose = motionProfile.getEndPose();
                     motionProfile.end();
-                    motionProfile = new DualLinearMotionProfile(startPose, telemetry);
+                    motionProfile = new DualLinearMotionProfile(startPose);
                     break;
             }
 
@@ -193,7 +191,7 @@ public class motionProfileTest extends LinearOpMode {
 
         TelemetryPacket packet = new TelemetryPacket();
         // profile.get_time() returns a pose for position, a pose for velocity, and a pose for acceleration in an array of poses, in that order.
-        Pose2D[] at_time = profile.get_state_at_time();
+        Pose2D[] at_time = profile.getEverything();
 
         Pose2D poseTarget = at_time[0];
         Pose2D poseEstimate = localizer.getPoseEstimate();

@@ -31,17 +31,14 @@ public class DualLinearMotionProfile implements MotionProfile {
 
     boolean swapped = false;
 
-    public DualMotionSegment[] trajectory = {};
-    public double[][] trajectory2 = {};
+    public double[][] trajectory = {};
 
     public double[][] getTrajectory() {
-        return trajectory2;
+        return trajectory;
     }
 
     public ElapsedTime timer;
     public double startTime = -1;
-
-    Telemetry telemetry;
 
     TrajectoryCase state = TrajectoryCase.ITS_COMPLICATED;
 
@@ -74,10 +71,8 @@ public class DualLinearMotionProfile implements MotionProfile {
 
     }
 
-    public DualLinearMotionProfile(Telemetry tel) {
-
-        telemetry = tel;
-        trajectory2 = new double[][]{{0, 0, 0}};
+    public DualLinearMotionProfile() {
+        trajectory = new double[][]{{0, 0, 0}};
         startPose = new Pose2D(0, 0, 0);
         endPose = new Pose2D(0, 0, 0);
         cos = 0;
@@ -87,10 +82,8 @@ public class DualLinearMotionProfile implements MotionProfile {
 
     }
 
-    public DualLinearMotionProfile(Pose2D hold, Telemetry tel) {
-
-        telemetry = tel;
-        trajectory2 = new double[][]{{0, 0, 0}};
+    public DualLinearMotionProfile(Pose2D hold) {
+        trajectory = new double[][]{{0, 0, 0}};
         startPose = hold;
         endPose = hold;
         cos = 0;
@@ -100,11 +93,9 @@ public class DualLinearMotionProfile implements MotionProfile {
 
     }
 
-    public DualLinearMotionProfile(Pose2D start, Pose2D end, Telemetry tel) {
+    public DualLinearMotionProfile(Pose2D start, Pose2D end) {
 
         ArrayList<double[]> periods = new ArrayList<>();
-
-        telemetry = tel;
 
         startPose = start;
         endPose = end;
@@ -282,36 +273,8 @@ public class DualLinearMotionProfile implements MotionProfile {
             }
         }
 
-        ArrayList<DualMotionSegment> collection = new ArrayList<>();
-
-        double t0 = 0;
-        double x0 = 0;
-        double h0 = 0;
-        double vx0 = 0;
-        double vh0 = 0;
-
-        for (double[] period : periods) {
-
-            double dt = period[2] - t0;
-
-            collection.add(
-                    new DualMotionSegment(
-                            x0, h0, vx0, vh0, period[0], period[1], theta, dt
-                    )
-            );
-
-            x0 += vx0 * dt + .5 * period[0] * dt * dt;
-            vx0 += period[0] * dt;
-
-            h0 += vh0 * dt + .5 * period[1] * dt * dt;
-            vh0 += period[1] * dt;
-
-            t0 = period[2];
-        }
-
-        trajectory = collection.toArray(new DualMotionSegment[periods.size()]);
-        trajectory2 = periods.toArray(new double[0][]);
-        duration = t0;
+        trajectory = periods.toArray(new double[0][]);
+        duration = periods.get(periods.size() - 1)[2];
 
     }
 
@@ -342,7 +305,7 @@ public class DualLinearMotionProfile implements MotionProfile {
     }
 
     // I called it a state ahaahhaaa im going insane
-    public Pose2D[] get_state_at_time() {
+    public Pose2D[] getEverything() {
         double time = getTime();
         if (time >= duration) {
             return new Pose2D[]{
@@ -358,7 +321,7 @@ public class DualLinearMotionProfile implements MotionProfile {
 
         double t0 = 0;
 
-        for (double[] segment : trajectory2) {
+        for (double[] segment : trajectory) {
 
             double dt = segment[2] - t0;
 
@@ -394,21 +357,21 @@ public class DualLinearMotionProfile implements MotionProfile {
         };
     }
 
-    public Pose2D traj_pos_time() {
+    public Pose2D trajectoryPosition() {
         double time = getTime();
         double x = 0;
         double h = startPose.h;
         double[] v = {0, 0};
 
-        for (int i = 0; i < trajectory2.length; i++) {
+        for (int i = 0; i < trajectory.length; i++) {
 
-            double[] segment = trajectory2[i];
+            double[] segment = trajectory[i];
 
-            double dt = segment[2] - ((i > 0) ? trajectory2[i-1][2] : 0);
+            double dt = segment[2] - ((i > 0) ? trajectory[i-1][2] : 0);
 
             if (time < segment[2]) {
 
-                time -= ((i > 0) ? trajectory2[i-1][2] : 0);
+                time -= ((i > 0) ? trajectory[i-1][2] : 0);
 
                 x += v[0] * time + .5 * segment[0] * time * time;
                 h += v[1] * time + .5 * segment[1] * time * time;
@@ -426,20 +389,20 @@ public class DualLinearMotionProfile implements MotionProfile {
         return new Pose2D(x * cos, x * sin, h);
     }
 
-    public Pose2D traj_vel_time() {
+    public Pose2D trajectoryVelocity() {
         double time = getTime();
         double h = startPose.h;
         double[] v = {0, 0};
 
-        for (int i = 0; i < trajectory2.length; i++) {
+        for (int i = 0; i < trajectory.length; i++) {
 
-            double[] segment = trajectory2[i];
+            double[] segment = trajectory[i];
 
-            double dt = segment[2] - ((i > 0) ? trajectory2[i-1][2] : 0);
+            double dt = segment[2] - ((i > 0) ? trajectory[i-1][2] : 0);
 
             if (time < segment[2]) {
 
-                time -= ((i > 0) ? trajectory2[i-1][2] : 0);
+                time -= ((i > 0) ? trajectory[i-1][2] : 0);
 
                 h += v[1] * time + .5 * segment[1] * time * time;
                 v[0] += segment[0] * time;
@@ -456,21 +419,21 @@ public class DualLinearMotionProfile implements MotionProfile {
         return new Pose2D(v[0] * Math.cos(theta), v[0] * Math.sin(theta), v[1]);
     }
 
-    public Pose2D traj_acc_time() {
+    public Pose2D trajectoryAcceleration() {
         double time = getTime();
         double h = startPose.h;
         double[] v = {0, 0};
         double[] a = {0, 0};
 
-        for (int i = 0; i < trajectory2.length; i++) {
+        for (int i = 0; i < trajectory.length; i++) {
 
-            double[] segment = trajectory2[i];
+            double[] segment = trajectory[i];
 
-            double dt = segment[2] - ((i > 0) ? trajectory2[i-1][2] : 0);
+            double dt = segment[2] - ((i > 0) ? trajectory[i-1][2] : 0);
 
             if (time < segment[2]) {
 
-                time -= ((i > 0) ? trajectory2[i-1][2] : 0);
+                time -= ((i > 0) ? trajectory[i-1][2] : 0);
 
                 h += v[1] * time + .5 * segment[1] * time * time;
                 v[0] += segment[0] * time;
@@ -496,10 +459,7 @@ public class DualLinearMotionProfile implements MotionProfile {
             return false;
         }
         double time = timer.time();
-        for (DualMotionSegment segment : trajectory) {
-            time -= segment.dt;
-        }
-        return time >= 0;
+        return time >= duration;
     }
 
     public TrajectoryCase getState() {
